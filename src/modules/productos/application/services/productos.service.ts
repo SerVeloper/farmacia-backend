@@ -1,0 +1,120 @@
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+
+import { Producto } from '../../domain/entities/producto.entity';
+import { CreateProductoDto } from '../dto/create-producto.dto';
+import { UpdateProductoDto } from '../dto/create-producto.dto';
+import { IProductosService } from '../interfaces/productos.service.interface';
+
+@Injectable()
+export class ProductosService implements IProductosService {
+  private readonly logger = new Logger(ProductosService.name);
+
+  constructor(
+    @InjectRepository(Producto)
+    private readonly productoRepository: Repository<Producto>,
+  ) {}
+
+  async create(createProductoDto: CreateProductoDto): Promise<Producto> {
+    if (!createProductoDto.nombre || createProductoDto.nombre.trim() === '') {
+      throw new BadRequestException('El nombre del producto es requerido');
+    }
+
+    const codigo = createProductoDto.codigo || this.generarCodigo();
+    
+    const precioVenta = createProductoDto.precioVenta ?? this.calcularPrecioVenta(
+      createProductoDto.precioCompra ?? 0,
+      createProductoDto.margen ?? 20
+    );
+
+    const productoData = {
+      nombre: createProductoDto.nombre,
+      codigo,
+      categoriaId: createProductoDto.categoriaId || undefined,
+      marcaId: createProductoDto.marcaId || undefined,
+      principioActivo: createProductoDto.principioActivo || undefined,
+      unidad: createProductoDto.unidad || 'pieza',
+      precioCompra: createProductoDto.precioCompra ?? 0,
+      precioVenta,
+      margen: createProductoDto.margen ?? 20,
+      stockMinimo: createProductoDto.stockMinimo ?? 0,
+      stockMaximo: createProductoDto.stockMaximo ?? 0,
+      esControlado: createProductoDto.esControlado ?? false,
+      descripcion: createProductoDto.descripcion || undefined,
+    };
+
+    const producto = this.productoRepository.create(productoData);
+    const productoGuardado = await this.productoRepository.save(producto);
+    
+    this.logger.log(`Producto creado: ${productoGuardado.id}`);
+    return productoGuardado;
+  }
+
+  async findAll(pagination?: { page: number; limit: number }): Promise<{ data: Producto[]; total: number }> {
+    const pagina = pagination?.page ?? 1;
+    const limite = pagination?.limit ?? 10;
+
+    const [data, total] = await this.productoRepository.findAndCount({
+      where: { activo: true },
+      relations: ['categoria', 'marca'],
+      skip: (pagina - 1) * limite,
+      take: limite,
+      order: { fechaCreacion: 'DESC' },
+    });
+
+    return { data, total };
+  }
+
+  async findOne(id: string): Promise<Producto> {
+    const producto = await this.productoRepository.findOne({
+      where: { id },
+      relations: ['categoria', 'marca'],
+    });
+
+    if (!producto) {
+      throw new NotFoundException(`Producto con ID ${id} no encontrado`);
+    }
+
+    return producto;
+  }
+
+  async search(term: string): Promise<Producto[]> {
+    return this.productoRepository
+      .createQueryBuilder('producto')
+      .where('producto.nombre ILIKE :term', { term: `%${term}%` })
+      .orWhere('producto.codigo ILIKE :term', { term: `%${term}%` })
+      .orWhere('producto.principioActivo ILIKE :term', { term: `%${term}%` })
+      .andWhere('producto.activo = :activo', { activo: true })
+      .leftJoinAndSelect('producto.categoria', 'categoria')
+      .leftJoinAndSelect('producto.marca', 'marca')
+      .getMany();
+  }
+
+  async update(id: string, updateProductoDto: UpdateProductoDto): Promise<Producto> {
+    const producto = await this.findOne(id);
+
+    if (updateProductoDto.precioVenta === undefined && updateProductoDto.precioCompra !== undefined) {
+      const margen = updateProductoDto.margen ?? producto.margen;
+      updateProductoDto.precioVenta = this.calcularPrecioVenta(updateProductoDto.precioCompra, margen);
+    }
+
+    Object.assign(producto, updateProductoDto);
+    return this.productoRepository.save(producto);
+  }
+
+  async remove(id: string): Promise<void> {
+    const producto = await this.findOne(id);
+    producto.activo = false;
+    await this.productoRepository.save(producto);
+    this.logger.log(`Producto eliminado: ${id}`);
+  }
+
+  private generarCodigo(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+  }
+
+  private calcularPrecioVenta(precioCompra: number, margen: number): number {
+    return precioCompra > 0 ? Number((precioCompra * (1 + margen / 100)).toFixed(2)) : 0;
+  }
+}
