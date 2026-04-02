@@ -51,44 +51,48 @@ export class ProductosService implements IProductosService {
     return productoGuardado;
   }
 
-  async findAll(pagination?: { page: number; limit: number }): Promise<{ data: Producto[]; total: number }> {
+  async findAll(pagination?: { page: number; limit: number }): Promise<{ data: any[]; total: number; page: number; limit: number; totalPages: number }> {
     const pagina = pagination?.page ?? 1;
     const limite = pagination?.limit ?? 10;
 
     const [data, total] = await this.productoRepository.findAndCount({
       where: { activo: true },
-      relations: ['categoria', 'marca'],
       skip: (pagina - 1) * limite,
       take: limite,
       order: { fechaCreacion: 'DESC' },
     });
 
-    return { data, total };
+    return {
+      data: this.convertToNumber(data),
+      total,
+      page: pagina,
+      limit: limite,
+      totalPages: Math.ceil(total / limite)
+    };
   }
 
-  async findOne(id: string): Promise<Producto> {
+  async findOne(id: string): Promise<any> {
     const producto = await this.productoRepository.findOne({
       where: { id },
-      relations: ['categoria', 'marca'],
     });
 
     if (!producto) {
       throw new NotFoundException(`Producto con ID ${id} no encontrado`);
     }
 
-    return producto;
+    return this.convertToNumber([producto])[0];
   }
 
-  async search(term: string): Promise<Producto[]> {
-    return this.productoRepository
+  async search(term: string): Promise<any[]> {
+    const productos = await this.productoRepository
       .createQueryBuilder('producto')
       .where('producto.nombre ILIKE :term', { term: `%${term}%` })
       .orWhere('producto.codigo ILIKE :term', { term: `%${term}%` })
       .orWhere('producto.principioActivo ILIKE :term', { term: `%${term}%` })
       .andWhere('producto.activo = :activo', { activo: true })
-      .leftJoinAndSelect('producto.categoria', 'categoria')
-      .leftJoinAndSelect('producto.marca', 'marca')
       .getMany();
+
+    return this.convertToNumber(productos);
   }
 
   async update(id: string, updateProductoDto: UpdateProductoDto): Promise<Producto> {
@@ -111,10 +115,26 @@ export class ProductosService implements IProductosService {
   }
 
   private generarCodigo(): string {
-    return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+    const now = new Date();
+    const aa = String(now.getFullYear()).slice(-2);
+    const dd = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+
+    return `${aa}${dd}${hh}${mm}${ss}`;
   }
 
   private calcularPrecioVenta(precioCompra: number, margen: number): number {
     return precioCompra > 0 ? Number((precioCompra * (1 + margen / 100)).toFixed(2)) : 0;
+  }
+
+  private convertToNumber(productos: Producto[]): any[] {
+    return productos.map(p => ({
+      ...p,
+      precioCompra: Number(p.precioCompra),
+      precioVenta: Number(p.precioVenta),
+      margen: Number(p.margen)
+    }));
   }
 }
