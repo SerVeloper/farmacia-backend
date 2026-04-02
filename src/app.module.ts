@@ -6,6 +6,7 @@ import * as Joi from 'joi';
 import { CategoriasModule } from './modules/categorias/categorias.module';
 import { MarcasModule } from './modules/marcas/marcas.module';
 import { LotesModule } from './modules/lotes/lotes.module';
+import { ProductosModule } from './modules/productos/productos.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { LotesModule } from './modules/lotes/lotes.module';
     CategoriasModule,
     MarcasModule,
     LotesModule,
+    ProductosModule,
   ],
 })
 export class AppModule {}
