@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -18,14 +23,16 @@ export class LotesService implements ILotesService {
 
   async create(createLoteDto: CreateLoteDto): Promise<Lote> {
     const loteExistente = await this.loteRepository.findOne({
-      where: { 
+      where: {
         productoId: createLoteDto.productoId,
         numeroLote: createLoteDto.numeroLote,
       },
     });
 
     if (loteExistente) {
-      throw new BadRequestException('Ya existe un lote con este número para este producto');
+      throw new BadRequestException(
+        'Ya existe un lote con este número para este producto',
+      );
     }
 
     const lote = this.loteRepository.create({
@@ -33,12 +40,15 @@ export class LotesService implements ILotesService {
       fechaVencimiento: new Date(createLoteDto.fechaVencimiento),
     });
     const loteGuardado = await this.loteRepository.save(lote);
-    
+
     this.logger.log(`Lote creado: ${loteGuardado.id}`);
     return loteGuardado;
   }
 
-  async findAll(pagination?: { page: number; limit: number }): Promise<{ data: Lote[]; total: number }> {
+  async findAll(pagination?: {
+    page: number;
+    limit: number;
+  }): Promise<{ data: Lote[]; total: number }> {
     const pagina = pagination?.page ?? 1;
     const limite = pagination?.limit ?? 10;
 
@@ -74,24 +84,29 @@ export class LotesService implements ILotesService {
   async update(id: string, updateLoteDto: UpdateLoteDto): Promise<Lote> {
     const lote = await this.findOne(id);
 
-    if (updateLoteDto.numeroLote && updateLoteDto.numeroLote !== lote.numeroLote) {
+    if (
+      updateLoteDto.numeroLote &&
+      updateLoteDto.numeroLote !== lote.numeroLote
+    ) {
       const loteExistente = await this.loteRepository.findOne({
-        where: { 
+        where: {
           productoId: lote.productoId,
           numeroLote: updateLoteDto.numeroLote,
         },
       });
       if (loteExistente) {
-        throw new BadRequestException('Ya existe un lote con este número para este producto');
+        throw new BadRequestException(
+          'Ya existe un lote con este número para este producto',
+        );
       }
     }
 
     Object.assign(lote, updateLoteDto);
-    
+
     if (updateLoteDto.fechaVencimiento) {
       lote.fechaVencimiento = new Date(updateLoteDto.fechaVencimiento);
     }
-    
+
     return this.loteRepository.save(lote);
   }
 

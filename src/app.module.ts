@@ -7,6 +7,9 @@ import { CategoriasModule } from './modules/categorias/categorias.module';
 import { MarcasModule } from './modules/marcas/marcas.module';
 import { LotesModule } from './modules/lotes/lotes.module';
 import { ProductosModule } from './modules/productos/productos.module';
+import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { SucursalesModule } from './modules/sucursales/sucursales.module';
 
 @Module({
   imports: [
@@ -19,6 +22,12 @@ import { ProductosModule } from './modules/productos/productos.module';
         DB_PASSWORD: Joi.string().required(),
         DB_NAME: Joi.string().required(),
         DB_SYNCHRONIZE: Joi.boolean().default(false),
+        JWT_SECRET: Joi.string().required(),
+        JWT_EXPIRES_IN: Joi.string().default('8h'),
+        DEFAULT_ADMIN_EMAIL: Joi.string()
+          .email()
+          .default('admin@farmacia.local'),
+        DEFAULT_ADMIN_PASSWORD: Joi.string().min(6).default('admin1234'),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -34,9 +43,10 @@ import { ProductosModule } from './modules/productos/productos.module';
         synchronize: config.get('DB_SYNCHRONIZE'),
         logging: config.get('NODE_ENV') === 'development',
         extra: {
-          ssl: config.get('NODE_ENV') === 'production' 
-            ? { rejectUnauthorized: false } 
-            : false,
+          ssl:
+            config.get('NODE_ENV') === 'production'
+              ? { rejectUnauthorized: false }
+              : false,
         },
       }),
       inject: [ConfigService],
@@ -45,6 +55,9 @@ import { ProductosModule } from './modules/productos/productos.module';
     MarcasModule,
     LotesModule,
     ProductosModule,
+    UsersModule,
+    AuthModule,
+    SucursalesModule,
   ],
 })
 export class AppModule {}

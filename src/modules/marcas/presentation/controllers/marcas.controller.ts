@@ -10,13 +10,26 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { MarcasService } from '../../application/services/marcas.service';
-import { CreateMarcaDto, UpdateMarcaDto } from '../../application/dto/create-marca.dto';
+import {
+  CreateMarcaDto,
+  UpdateMarcaDto,
+} from '../../application/dto/create-marca.dto';
+import { JwtAuthGuard } from '../../../auth/presentation/guards/jwt-auth.guard';
 
 @ApiTags('marcas')
 @ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 @Controller('marcas')
 export class MarcasController {
   constructor(private readonly marcasService: MarcasService) {}
@@ -24,7 +37,10 @@ export class MarcasController {
   @Post()
   @ApiOperation({ summary: 'Crear una nueva marca' })
   @ApiResponse({ status: 201, description: 'Marca creada exitosamente' })
-  @ApiResponse({ status: 400, description: 'Error de validación o marca duplicada' })
+  @ApiResponse({
+    status: 400,
+    description: 'Error de validación o marca duplicada',
+  })
   async create(@Body() createMarcaDto: CreateMarcaDto) {
     return this.marcasService.create(createMarcaDto);
   }
@@ -38,7 +54,10 @@ export class MarcasController {
     @Query('pagina') pagina?: number,
     @Query('limite') limite?: number,
   ) {
-    return this.marcasService.findAll({ page: pagina || 1, limit: limite || 10 });
+    return this.marcasService.findAll({
+      page: pagina || 1,
+      limit: limite || 10,
+    });
   }
 
   @Get(':id')

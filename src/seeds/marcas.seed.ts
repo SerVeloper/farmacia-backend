@@ -17,7 +17,9 @@ export class MarcasSeeder {
     const repository = this.dataSource.getRepository(Marca);
 
     for (const marca of marcas) {
-      const existe = await repository.findOne({ where: { nombre: marca.nombre } });
+      const existe = await repository.findOne({
+        where: { nombre: marca.nombre },
+      });
       if (!existe) {
         await repository.save(repository.create(marca));
         console.log(`  ✓ Marca creada: ${marca.nombre}`);

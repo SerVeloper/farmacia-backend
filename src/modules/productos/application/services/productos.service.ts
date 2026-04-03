@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -22,11 +27,13 @@ export class ProductosService implements IProductosService {
     }
 
     const codigo = createProductoDto.codigo || this.generarCodigo();
-    
-    const precioVenta = createProductoDto.precioVenta ?? this.calcularPrecioVenta(
-      createProductoDto.precioCompra ?? 0,
-      createProductoDto.margen ?? 20
-    );
+
+    const precioVenta =
+      createProductoDto.precioVenta ??
+      this.calcularPrecioVenta(
+        createProductoDto.precioCompra ?? 0,
+        createProductoDto.margen ?? 20,
+      );
 
     const productoData = {
       nombre: createProductoDto.nombre,
@@ -46,12 +53,18 @@ export class ProductosService implements IProductosService {
 
     const producto = this.productoRepository.create(productoData);
     const productoGuardado = await this.productoRepository.save(producto);
-    
+
     this.logger.log(`Producto creado: ${productoGuardado.id}`);
     return productoGuardado;
   }
 
-  async findAll(pagination?: { page: number; limit: number }): Promise<{ data: any[]; total: number; page: number; limit: number; totalPages: number }> {
+  async findAll(pagination?: { page: number; limit: number }): Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const pagina = pagination?.page ?? 1;
     const limite = pagination?.limit ?? 10;
 
@@ -67,7 +80,7 @@ export class ProductosService implements IProductosService {
       total,
       page: pagina,
       limit: limite,
-      totalPages: Math.ceil(total / limite)
+      totalPages: Math.ceil(total / limite),
     };
   }
 
@@ -95,12 +108,21 @@ export class ProductosService implements IProductosService {
     return this.convertToNumber(productos);
   }
 
-  async update(id: string, updateProductoDto: UpdateProductoDto): Promise<Producto> {
+  async update(
+    id: string,
+    updateProductoDto: UpdateProductoDto,
+  ): Promise<Producto> {
     const producto = await this.findOne(id);
 
-    if (updateProductoDto.precioVenta === undefined && updateProductoDto.precioCompra !== undefined) {
+    if (
+      updateProductoDto.precioVenta === undefined &&
+      updateProductoDto.precioCompra !== undefined
+    ) {
       const margen = updateProductoDto.margen ?? producto.margen;
-      updateProductoDto.precioVenta = this.calcularPrecioVenta(updateProductoDto.precioCompra, margen);
+      updateProductoDto.precioVenta = this.calcularPrecioVenta(
+        updateProductoDto.precioCompra,
+        margen,
+      );
     }
 
     Object.assign(producto, updateProductoDto);
@@ -126,15 +148,17 @@ export class ProductosService implements IProductosService {
   }
 
   private calcularPrecioVenta(precioCompra: number, margen: number): number {
-    return precioCompra > 0 ? Number((precioCompra * (1 + margen / 100)).toFixed(2)) : 0;
+    return precioCompra > 0
+      ? Number((precioCompra * (1 + margen / 100)).toFixed(2))
+      : 0;
   }
 
   private convertToNumber(productos: Producto[]): any[] {
-    return productos.map(p => ({
+    return productos.map((p) => ({
       ...p,
       precioCompra: Number(p.precioCompra),
       precioVenta: Number(p.precioVenta),
-      margen: Number(p.margen)
+      margen: Number(p.margen),
     }));
   }
 }

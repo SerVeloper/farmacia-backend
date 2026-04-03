@@ -13,9 +13,18 @@ export class CategoriasSeeder {
     const categorias = [
       { nombre: 'General', descripcion: 'Categoría general por defecto' },
       { nombre: 'Analgésico', descripcion: 'Medicamentos para el dolor' },
-      { nombre: 'Antipirético', descripcion: 'Medicamentos para reducir fiebre' },
-      { nombre: 'Antiinflamatorio', descripcion: 'Medicamentos para reducir inflamación' },
-      { nombre: 'Antibiótico', descripcion: 'Medicamentos para tratar infecciones' },
+      {
+        nombre: 'Antipirético',
+        descripcion: 'Medicamentos para reducir fiebre',
+      },
+      {
+        nombre: 'Antiinflamatorio',
+        descripcion: 'Medicamentos para reducir inflamación',
+      },
+      {
+        nombre: 'Antibiótico',
+        descripcion: 'Medicamentos para tratar infecciones',
+      },
       { nombre: 'Antihistamínico', descripcion: 'Medicamentos para alergias' },
       { nombre: 'Vitaminas', descripcion: 'Suplementos vitamínicos' },
     ];
@@ -23,7 +32,9 @@ export class CategoriasSeeder {
     const repository = this.dataSource.getRepository(Categoria);
 
     for (const categoria of categorias) {
-      const existe = await repository.findOne({ where: { nombre: categoria.nombre } });
+      const existe = await repository.findOne({
+        where: { nombre: categoria.nombre },
+      });
       if (!existe) {
         await repository.save(repository.create(categoria));
         console.log(`  ✓ Categoría creada: ${categoria.nombre}`);

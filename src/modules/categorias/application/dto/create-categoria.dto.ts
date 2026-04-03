@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCategoriaDto {
@@ -8,7 +14,10 @@ export class CreateCategoriaDto {
   @MaxLength(100)
   nombre: string;
 
-  @ApiPropertyOptional({ example: 'Medicamentos para el dolor', description: 'Descripción de la categoría' })
+  @ApiPropertyOptional({
+    example: 'Medicamentos para el dolor',
+    description: 'Descripción de la categoría',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(255)

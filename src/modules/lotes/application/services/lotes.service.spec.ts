@@ -41,7 +41,7 @@ describe('LotesService', () => {
 
     service = module.get<LotesService>(LotesService);
     repository = module.get(getRepositoryToken(Lote));
-    
+
     jest.clearAllMocks();
   });
 
@@ -51,14 +51,17 @@ describe('LotesService', () => {
 
   describe('create', () => {
     it('should create a lote', async () => {
-      const createDto = { 
+      const createDto = {
         productoId: '123e4567-e89b-12d3-a456-426614174001',
         numeroLote: 'LOTE001',
         fechaVencimiento: '2025-12-31',
         cantidadInicial: 100,
       };
-      
-      const loteWithDate = { ...mockLote, fechaVencimiento: new Date('2025-12-31') };
+
+      const loteWithDate = {
+        ...mockLote,
+        fechaVencimiento: new Date('2025-12-31'),
+      };
       repository.create.mockReturnValue(loteWithDate);
       repository.save.mockResolvedValue(loteWithDate);
 
@@ -69,17 +72,19 @@ describe('LotesService', () => {
     });
 
     it('should throw BadRequestException if lot number already exists for product', async () => {
-      const createDto = { 
+      const createDto = {
         productoId: '123e4567-e89b-12d3-a456-426614174001',
         numeroLote: 'LOTE001',
         fechaVencimiento: '2025-12-31',
         cantidadInicial: 100,
       };
-      
+
       repository.create.mockReturnValue(mockLote);
       repository.findOne.mockResolvedValue(mockLote);
 
-      await expect(service.create(createDto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -111,8 +116,10 @@ describe('LotesService', () => {
 
       expect(repository.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ productoId: '123e4567-e89b-12d3-a456-426614174001' })
-        })
+          where: expect.objectContaining({
+            productoId: '123e4567-e89b-12d3-a456-426614174001',
+          }),
+        }),
       );
     });
   });
@@ -129,7 +136,9 @@ describe('LotesService', () => {
     it('should throw NotFoundException if lote not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.findOne('non-existent-id')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -149,7 +158,9 @@ describe('LotesService', () => {
     it('should throw NotFoundException if lote not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.update('non-existent-id', { cantidadInicial: 50 })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.update('non-existent-id', { cantidadInicial: 50 }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -162,13 +173,17 @@ describe('LotesService', () => {
 
       await service.remove(mockLote.id);
 
-      expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ activo: false }));
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ activo: false }),
+      );
     });
 
     it('should throw NotFoundException if lote not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.remove('non-existent-id')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

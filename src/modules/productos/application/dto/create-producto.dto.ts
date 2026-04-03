@@ -1,14 +1,30 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsNumber, IsUUID, Min, Max, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  IsUUID,
+  Min,
+  Max,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProductoDto {
-  @ApiProperty({ example: 'Paracetamol 500mg', description: 'Nombre del producto' })
+  @ApiProperty({
+    example: 'Paracetamol 500mg',
+    description: 'Nombre del producto',
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
   nombre: string;
 
-  @ApiPropertyOptional({ example: '12345678-abcd', description: 'Código único (auto-generado si no se proporciona)' })
+  @ApiPropertyOptional({
+    example: '12345678-abcd',
+    description: 'Código único (auto-generado si no se proporciona)',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(50)
@@ -24,7 +40,10 @@ export class CreateProductoDto {
   @IsUUID()
   marcaId?: string;
 
-  @ApiPropertyOptional({ example: 'Paracetamol', description: 'Principio activo' })
+  @ApiPropertyOptional({
+    example: 'Paracetamol',
+    description: 'Principio activo',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(255)
@@ -72,7 +91,10 @@ export class CreateProductoDto {
   @IsBoolean()
   esControlado?: boolean;
 
-  @ApiPropertyOptional({ example: 'Analgésico y antipirético', description: 'Descripción' })
+  @ApiPropertyOptional({
+    example: 'Analgésico y antipirético',
+    description: 'Descripción',
+  })
   @IsOptional()
   @IsString()
   descripcion?: string;

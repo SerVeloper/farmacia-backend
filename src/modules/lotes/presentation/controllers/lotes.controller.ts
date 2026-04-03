@@ -10,13 +10,26 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { LotesService } from '../../application/services/lotes.service';
-import { CreateLoteDto, UpdateLoteDto } from '../../application/dto/create-lote.dto';
+import {
+  CreateLoteDto,
+  UpdateLoteDto,
+} from '../../application/dto/create-lote.dto';
+import { JwtAuthGuard } from '../../../auth/presentation/guards/jwt-auth.guard';
 
 @ApiTags('lotes')
 @ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 @Controller('lotes')
 export class LotesController {
   constructor(private readonly lotesService: LotesService) {}
@@ -24,7 +37,10 @@ export class LotesController {
   @Post()
   @ApiOperation({ summary: 'Crear un nuevo lote de producto' })
   @ApiResponse({ status: 201, description: 'Lote creado exitosamente' })
-  @ApiResponse({ status: 400, description: 'Error de validación o lote duplicado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Error de validación o lote duplicado',
+  })
   async create(@Body() createLoteDto: CreateLoteDto) {
     return this.lotesService.create(createLoteDto);
   }
@@ -38,12 +54,19 @@ export class LotesController {
     @Query('pagina') pagina?: number,
     @Query('limite') limite?: number,
   ) {
-    return this.lotesService.findAll({ page: pagina || 1, limit: limite || 10 });
+    return this.lotesService.findAll({
+      page: pagina || 1,
+      limit: limite || 10,
+    });
   }
 
   @Get('producto/:productoId')
   @ApiOperation({ summary: 'Obtener lotes por producto' })
-  @ApiParam({ name: 'productoId', description: 'UUID del producto', type: 'string' })
+  @ApiParam({
+    name: 'productoId',
+    description: 'UUID del producto',
+    type: 'string',
+  })
   @ApiResponse({ status: 200, description: 'Lista de lotes del producto' })
   async findByProduct(@Param('productoId', ParseUUIDPipe) productoId: string) {
     return this.lotesService.findAllByProduct(productoId);

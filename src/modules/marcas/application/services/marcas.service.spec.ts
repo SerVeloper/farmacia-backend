@@ -39,7 +39,7 @@ describe('MarcasService', () => {
 
     service = module.get<MarcasService>(MarcasService);
     repository = module.get(getRepositoryToken(Marca));
-    
+
     jest.clearAllMocks();
   });
 
@@ -50,7 +50,7 @@ describe('MarcasService', () => {
   describe('create', () => {
     it('should create a marca', async () => {
       const createDto = { nombre: 'Bayer', descripcion: 'Laboratorio alemán' };
-      
+
       repository.create.mockReturnValue(mockMarca);
       repository.save.mockResolvedValue(mockMarca);
 
@@ -63,17 +63,24 @@ describe('MarcasService', () => {
 
     it('should throw BadRequestException if name already exists', async () => {
       const createDto = { nombre: 'Bayer', descripcion: 'Laboratorio alemán' };
-      
+
       repository.create.mockReturnValue(mockMarca);
       repository.findOne.mockResolvedValue(mockMarca);
 
-      await expect(service.create(createDto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should use default values when not provided', async () => {
       const createDto = { nombre: 'Nueva Marca' };
-      const marcaWithDefaults = { ...mockMarca, nombre: 'Nueva Marca', descripcion: 'Sin descripción', activo: true };
-      
+      const marcaWithDefaults = {
+        ...mockMarca,
+        nombre: 'Nueva Marca',
+        descripcion: 'Sin descripción',
+        activo: true,
+      };
+
       repository.create.mockReturnValue(marcaWithDefaults);
       repository.save.mockResolvedValue(marcaWithDefaults);
 
@@ -116,7 +123,9 @@ describe('MarcasService', () => {
     it('should throw NotFoundException if marca not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.findOne('non-existent-id')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -139,7 +148,9 @@ describe('MarcasService', () => {
     it('should throw NotFoundException if marca not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.update('non-existent-id', { nombre: 'Test' })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.update('non-existent-id', { nombre: 'Test' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -152,13 +163,17 @@ describe('MarcasService', () => {
 
       await service.remove(mockMarca.id);
 
-      expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ activo: false }));
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ activo: false }),
+      );
     });
 
     it('should throw NotFoundException if marca not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.remove('non-existent-id')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

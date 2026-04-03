@@ -29,10 +29,22 @@ export class Producto {
   @Column({ length: 20, default: 'pieza' })
   unidad: string;
 
-  @Column({ name: 'precio_compra', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({
+    name: 'precio_compra',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
   precioCompra: number;
 
-  @Column({ name: 'precio_venta', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({
+    name: 'precio_venta',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
   precioVenta: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 20 })

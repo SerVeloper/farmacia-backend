@@ -10,13 +10,26 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { CategoriasService } from '../../application/services/categorias.service';
-import { CreateCategoriaDto, UpdateCategoriaDto } from '../../application/dto/create-categoria.dto';
+import {
+  CreateCategoriaDto,
+  UpdateCategoriaDto,
+} from '../../application/dto/create-categoria.dto';
+import { JwtAuthGuard } from '../../../auth/presentation/guards/jwt-auth.guard';
 
 @ApiTags('categorias')
 @ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 @Controller('categorias')
 export class CategoriasController {
   constructor(private readonly categoriasService: CategoriasService) {}
@@ -24,21 +37,37 @@ export class CategoriasController {
   @Post()
   @ApiOperation({ summary: 'Crear una nueva categoría' })
   @ApiResponse({ status: 201, description: 'Categoría creada exitosamente' })
-  @ApiResponse({ status: 400, description: 'Error de validación o categoría duplicada' })
+  @ApiResponse({
+    status: 400,
+    description: 'Error de validación o categoría duplicada',
+  })
   async create(@Body() createCategoriaDto: CreateCategoriaDto) {
     return this.categoriasService.create(createCategoriaDto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Obtener todas las categorías' })
-  @ApiQuery({ name: 'pagina', required: false, type: Number, description: 'Número de página' })
-  @ApiQuery({ name: 'limite', required: false, type: Number, description: 'Registros por página' })
+  @ApiQuery({
+    name: 'pagina',
+    required: false,
+    type: Number,
+    description: 'Número de página',
+  })
+  @ApiQuery({
+    name: 'limite',
+    required: false,
+    type: Number,
+    description: 'Registros por página',
+  })
   @ApiResponse({ status: 200, description: 'Lista de categorías' })
   async findAll(
     @Query('pagina') pagina?: number,
     @Query('limite') limite?: number,
   ) {
-    return this.categoriasService.findAll({ page: pagina || 1, limit: limite || 10 });
+    return this.categoriasService.findAll({
+      page: pagina || 1,
+      limit: limite || 10,
+    });
   }
 
   @Get(':id')

@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -32,12 +37,15 @@ export class MarcasService implements IMarcasService {
 
     const marca = this.marcaRepository.create(marcaData);
     const marcaGuardada = await this.marcaRepository.save(marca);
-    
+
     this.logger.log(`Marca creada: ${marcaGuardada.id}`);
     return marcaGuardada;
   }
 
-  async findAll(pagination?: { page: number; limit: number }): Promise<{ data: Marca[]; total: number }> {
+  async findAll(pagination?: {
+    page: number;
+    limit: number;
+  }): Promise<{ data: Marca[]; total: number }> {
     const pagina = pagination?.page ?? 1;
     const limite = pagination?.limit ?? 10;
 

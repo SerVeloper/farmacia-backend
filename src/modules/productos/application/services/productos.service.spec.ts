@@ -49,13 +49,13 @@ describe('ProductosService', () => {
 
     service = module.get<ProductosService>(ProductosService);
     repository = module.get(getRepositoryToken(Producto));
-    
+
     jest.clearAllMocks();
   });
 
   describe('create', () => {
     it('should create a producto with auto-generated codigo', async () => {
-      const createDto = { 
+      const createDto = {
         nombre: 'Paracetamol 500mg',
         categoriaId: '123e4567-e89b-12d3-a456-426614174001',
         marcaId: '123e4567-e89b-12d3-a456-426614174002',
@@ -67,11 +67,11 @@ describe('ProductosService', () => {
         esControlado: false,
       };
 
-      const productoCreado = { 
-        ...mockProducto, 
-        codigo: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}/) 
+      const productoCreado = {
+        ...mockProducto,
+        codigo: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}/),
       };
-      
+
       repository.create.mockReturnValue(productoCreado as any);
       repository.save.mockResolvedValue(productoCreado as any);
 
@@ -84,7 +84,7 @@ describe('ProductosService', () => {
     });
 
     it('should calculate precioVenta when not provided and precioCompra > 0', async () => {
-      const createDto = { 
+      const createDto = {
         nombre: 'Aspirina 500mg',
         precioCompra: 10,
         margen: 30,
@@ -92,12 +92,12 @@ describe('ProductosService', () => {
 
       const expectedPrecioVenta = 13; // 10 + 30%
 
-      const productoCreado = { 
-        ...mockProducto, 
+      const productoCreado = {
+        ...mockProducto,
         nombre: 'Aspirina 500mg',
         precioVenta: expectedPrecioVenta,
       };
-      
+
       repository.create.mockReturnValue(productoCreado as any);
       repository.save.mockResolvedValue(productoCreado as any);
 
@@ -107,12 +107,12 @@ describe('ProductosService', () => {
     });
 
     it('should use default values when not provided', async () => {
-      const createDto = { 
+      const createDto = {
         nombre: 'Vitamina C',
       };
 
-      const productoConDefaults = { 
-        ...mockProducto, 
+      const productoConDefaults = {
+        ...mockProducto,
         nombre: 'Vitamina C',
         categoriaId: undefined,
         marcaId: undefined,
@@ -124,7 +124,7 @@ describe('ProductosService', () => {
         stockMaximo: 0,
         esControlado: false,
       };
-      
+
       repository.create.mockReturnValue(productoConDefaults as any);
       repository.save.mockResolvedValue(productoConDefaults as any);
 
@@ -135,11 +135,13 @@ describe('ProductosService', () => {
     });
 
     it('should throw BadRequestException when nombre is empty', async () => {
-      const createDto = { 
+      const createDto = {
         nombre: '',
       };
 
-      await expect(service.create(createDto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -176,7 +178,9 @@ describe('ProductosService', () => {
     it('should throw NotFoundException if producto not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.findOne('non-existent-id')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -203,7 +207,9 @@ describe('ProductosService', () => {
 
       await service.remove(mockProducto.id);
 
-      expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ activo: false }));
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ activo: false }),
+      );
     });
   });
 });

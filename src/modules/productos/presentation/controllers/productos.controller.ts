@@ -10,13 +10,26 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { ProductosService } from '../../application/services/productos.service';
-import { CreateProductoDto, UpdateProductoDto } from '../../application/dto/create-producto.dto';
+import {
+  CreateProductoDto,
+  UpdateProductoDto,
+} from '../../application/dto/create-producto.dto';
+import { JwtAuthGuard } from '../../../auth/presentation/guards/jwt-auth.guard';
 
 @ApiTags('productos')
 @ApiBearerAuth('JWT-auth')
+@UseGuards(JwtAuthGuard)
 @Controller('productos')
 export class ProductosController {
   constructor(private readonly productosService: ProductosService) {}
@@ -38,7 +51,10 @@ export class ProductosController {
     @Query('pagina') pagina?: number,
     @Query('limite') limite?: number,
   ) {
-    return this.productosService.findAll({ page: pagina || 1, limit: limite || 10 });
+    return this.productosService.findAll({
+      page: pagina || 1,
+      limit: limite || 10,
+    });
   }
 
   @Get('search')

@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateMarcaDto {
@@ -8,7 +14,10 @@ export class CreateMarcaDto {
   @MaxLength(100)
   nombre: string;
 
-  @ApiPropertyOptional({ example: 'Laboratorio alemán', description: 'Descripción de la marca' })
+  @ApiPropertyOptional({
+    example: 'Laboratorio alemán',
+    description: 'Descripción de la marca',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(255)

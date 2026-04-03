@@ -39,7 +39,7 @@ describe('CategoriasService', () => {
 
     service = module.get<CategoriasService>(CategoriasService);
     repository = module.get(getRepositoryToken(Categoria));
-    
+
     jest.clearAllMocks();
   });
 
@@ -49,8 +49,11 @@ describe('CategoriasService', () => {
 
   describe('create', () => {
     it('should create a categoria', async () => {
-      const createDto = { nombre: 'Analgésico', descripcion: 'Medicamentos para el dolor' };
-      
+      const createDto = {
+        nombre: 'Analgésico',
+        descripcion: 'Medicamentos para el dolor',
+      };
+
       repository.create.mockReturnValue(mockCategoria);
       repository.save.mockResolvedValue(mockCategoria);
 
@@ -62,12 +65,17 @@ describe('CategoriasService', () => {
     });
 
     it('should throw BadRequestException if name already exists', async () => {
-      const createDto = { nombre: 'Analgésico', descripcion: 'Medicamentos para el dolor' };
-      
+      const createDto = {
+        nombre: 'Analgésico',
+        descripcion: 'Medicamentos para el dolor',
+      };
+
       repository.create.mockReturnValue(mockCategoria);
       repository.findOne.mockResolvedValue(mockCategoria);
 
-      await expect(service.create(createDto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(createDto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -104,7 +112,9 @@ describe('CategoriasService', () => {
     it('should throw NotFoundException if categoria not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.findOne('non-existent-id')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -127,7 +137,9 @@ describe('CategoriasService', () => {
     it('should throw NotFoundException if categoria not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.update('non-existent-id', { nombre: 'Test' })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.update('non-existent-id', { nombre: 'Test' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -140,13 +152,17 @@ describe('CategoriasService', () => {
 
       await service.remove(mockCategoria.id);
 
-      expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ activo: false }));
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ activo: false }),
+      );
     });
 
     it('should throw NotFoundException if categoria not found', async () => {
       repository.findOne.mockResolvedValue(null);
 
-      await expect(service.remove('non-existent-id')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

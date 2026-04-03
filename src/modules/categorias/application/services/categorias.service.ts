@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -27,12 +32,15 @@ export class CategoriasService implements ICategoriasService {
 
     const categoria = this.categoriaRepository.create(createCategoriaDto);
     const categoriaGuardada = await this.categoriaRepository.save(categoria);
-    
+
     this.logger.log(`Categoría creada: ${categoriaGuardada.id}`);
     return categoriaGuardada;
   }
 
-  async findAll(pagination?: { page: number; limit: number }): Promise<{ data: Categoria[]; total: number }> {
+  async findAll(pagination?: {
+    page: number;
+    limit: number;
+  }): Promise<{ data: Categoria[]; total: number }> {
     const pagina = pagination?.page ?? 1;
     const limite = pagination?.limit ?? 10;
 
@@ -58,15 +66,23 @@ export class CategoriasService implements ICategoriasService {
     return categoria;
   }
 
-  async update(id: string, updateCategoriaDto: UpdateCategoriaDto): Promise<Categoria> {
+  async update(
+    id: string,
+    updateCategoriaDto: UpdateCategoriaDto,
+  ): Promise<Categoria> {
     const categoria = await this.findOne(id);
 
-    if (updateCategoriaDto.nombre && updateCategoriaDto.nombre !== categoria.nombre) {
+    if (
+      updateCategoriaDto.nombre &&
+      updateCategoriaDto.nombre !== categoria.nombre
+    ) {
       const categoriaExistente = await this.categoriaRepository.findOne({
         where: { nombre: updateCategoriaDto.nombre },
       });
       if (categoriaExistente) {
-        throw new BadRequestException('Ya existe una categoría con este nombre');
+        throw new BadRequestException(
+          'Ya existe una categoría con este nombre',
+        );
       }
     }
 
