@@ -23,7 +23,14 @@ import { SucursalesModule } from './modules/sucursales/sucursales.module';
         DB_NAME: Joi.string().required(),
         DB_SYNCHRONIZE: Joi.boolean().default(false),
         JWT_SECRET: Joi.string().required(),
-        JWT_EXPIRES_IN: Joi.string().default('8h'),
+        ACCESS_TOKEN_TTL: Joi.string().default('15m'),
+        SESSION_TTL: Joi.string().default('24h'),
+        REMEMBER_ME_TTL: Joi.string().default('15d'),
+        REFRESH_TOKEN_SECRET: Joi.string().required(),
+        RESET_TOKEN_TTL_MINUTES: Joi.number().default(30),
+        AUTH_REFRESH_COOKIE_NAME: Joi.string().default('farmacia_refresh_token'),
+        AUTH_COOKIE_SECURE: Joi.boolean().default(false),
+        AUTH_COOKIE_SAMESITE: Joi.string().valid('lax', 'strict', 'none').default('lax'),
         DEFAULT_ADMIN_EMAIL: Joi.string()
           .email()
           .default('admin@farmacia.local'),

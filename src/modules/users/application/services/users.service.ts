@@ -180,6 +180,26 @@ export class UsersService implements IUsersService {
     await this.usersRepository.update(id, { ultimoAcceso: new Date() });
   }
 
+  async findByIdForAuth(id: string): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { id } });
+  }
+
+  async findByIdentifierForRecovery(identifier: string): Promise<User | null> {
+    const normalizedIdentifier = identifier.trim().toLowerCase();
+
+    if (!normalizedIdentifier.includes('@')) {
+      return null;
+    }
+
+    return this.usersRepository.findOne({
+      where: { email: normalizedIdentifier },
+    });
+  }
+
+  async updatePasswordHash(id: string, passwordHash: string): Promise<void> {
+    await this.usersRepository.update(id, { passwordHash });
+  }
+
   async ensureAdminExists(
     defaultEmail: string,
     defaultPassword: string,
