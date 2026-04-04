@@ -29,6 +29,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 interface IRequestWithUser {
   user?: {
     id: string;
+    sucursalActivaId?: string | null;
   };
 }
 
@@ -160,7 +161,13 @@ export class AuthController {
       throw new UnauthorizedException('Usuario no autenticado');
     }
 
-    return this.authService.getProfile(userId);
+    return this.authService.getProfile(userId, req.user?.sucursalActivaId);
+  }
+
+  @Get('branches')
+  @ApiOperation({ summary: 'Listar sucursales habilitadas para seleccion en login' })
+  branches() {
+    return this.authService.getLoginSucursales();
   }
 
   private extractRefreshToken(

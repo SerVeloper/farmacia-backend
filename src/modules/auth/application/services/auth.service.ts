@@ -18,6 +18,7 @@ import { UsersService } from '../../../users/application/services/users.service'
 import { RoleCode } from '../../../users/domain/entities/role.entity';
 import { mapLegacyRoleToRoleCode } from '../../../users/domain/constants/roles.constants';
 import { UserRole } from '../../../users/domain/entities/user.entity';
+import { SucursalesService } from '../../../sucursales/application/services/sucursales.service';
 import { AuthSession } from '../../domain/entities/auth-session.entity';
 import {
   PasswordResetToken,
@@ -43,6 +44,7 @@ export class AuthService implements OnModuleInit {
     @InjectRepository(PasswordResetToken)
     private readonly resetTokensRepository: Repository<PasswordResetToken>,
     private readonly recoveryNotifier: RecoveryNotifierService,
+    private readonly sucursalesService: SucursalesService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -79,7 +81,14 @@ export class AuthService implements OnModuleInit {
       email: user.email,
       roles: this.getRoleCodes(user),
       rol: user.rol,
+      sucursalActivaId: null,
     };
+
+    const sucursalActivaId = await this.resolveSucursalActiva(user, {
+      requestedSucursalId: loginDto.sucursalActivaId,
+      roleCodes: payload.roles,
+    });
+    payload.sucursalActivaId = sucursalActivaId;
 
     const rememberMe = loginDto.rememberMe === true;
     const accessTokenTtl = this.getAccessTokenTtl();
@@ -108,6 +117,7 @@ export class AuthService implements OnModuleInit {
       sid: session.id,
       fid: session.familyId,
       rm: rememberMe,
+      sa: sucursalActivaId,
     });
 
     session.refreshTokenHash = this.hashValue(refreshToken);
@@ -125,7 +135,10 @@ export class AuthService implements OnModuleInit {
       expiresIn: accessTokenTtl,
       sessionExpiresIn: sessionTtl,
       sessionMaxAgeMs,
-      user: this.usersService.sanitizeUser(user),
+      user: {
+        ...this.usersService.sanitizeUser(user),
+        sucursalActivaId,
+      },
     };
   }
 
@@ -196,6 +209,7 @@ export class AuthService implements OnModuleInit {
       sid: newSession.id,
       fid: session.familyId,
       rm: session.rememberMe,
+      sa: payload.sa,
     });
 
     newSession.refreshTokenHash = this.hashValue(newRefreshToken);
@@ -210,6 +224,7 @@ export class AuthService implements OnModuleInit {
       email: user.email,
       roles: this.getRoleCodes(user),
       rol: user.rol,
+      sucursalActivaId: payload.sa || null,
     };
     const accessTokenTtl = this.getAccessTokenTtl();
     const accessToken = await this.jwtService.signAsync(accessPayload, {
@@ -338,8 +353,23 @@ export class AuthService implements OnModuleInit {
     return { message: 'Contrasena actualizada correctamente' };
   }
 
-  async getProfile(userId: string) {
-    return this.usersService.findOne(userId);
+  async getProfile(userId: string, sucursalActivaId?: string | null) {
+    const profile = await this.usersService.findOne(userId);
+    return {
+      ...profile,
+      sucursalActivaId: sucursalActivaId || null,
+    };
+  }
+
+  async getLoginSucursales() {
+    const sucursales = await this.sucursalesService.findAll();
+    return sucursales
+      .filter((sucursal) => sucursal.activo)
+      .map((sucursal) => ({
+        id: sucursal.id,
+        codigo: sucursal.codigo,
+        nombre: sucursal.nombre,
+      }));
   }
 
   private async signRefreshToken(payload: IRefreshTokenPayload): Promise<string> {
@@ -449,5 +479,57 @@ export class AuthService implements OnModuleInit {
     }
 
     return [RoleCode.VENDEDOR];
+  }
+
+  private async resolveSucursalActiva(
+    user: { sucursalId?: string | null },
+    options: {
+      requestedSucursalId?: string;
+      roleCodes: RoleCode[];
+    },
+  ): Promise<string | null> {
+    if (this.requiresSucursalSelection(options.roleCodes)) {
+      if (!options.requestedSucursalId) {
+        throw new BadRequestException(
+          'Debe seleccionar una sucursal para iniciar sesion',
+        );
+      }
+
+      const sucursal = await this.sucursalesService.findOne(
+        options.requestedSucursalId,
+      );
+
+      if (!sucursal.activo) {
+        throw new BadRequestException('La sucursal seleccionada no esta activa');
+      }
+
+      return sucursal.id;
+    }
+
+    if (this.requiresAssignedSucursal(options.roleCodes)) {
+      if (!user.sucursalId) {
+        throw new BadRequestException(
+          'El usuario requiere una sucursal asignada para operar',
+        );
+      }
+
+      return user.sucursalId;
+    }
+
+    return null;
+  }
+
+  private requiresSucursalSelection(roleCodes: RoleCode[]): boolean {
+    return (
+      roleCodes.includes(RoleCode.ADMINISTRADOR) ||
+      roleCodes.includes(RoleCode.CONTADOR)
+    );
+  }
+
+  private requiresAssignedSucursal(roleCodes: RoleCode[]): boolean {
+    return (
+      roleCodes.includes(RoleCode.REGENTE) ||
+      roleCodes.includes(RoleCode.VENDEDOR)
+    );
   }
 }

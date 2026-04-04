@@ -6,6 +6,7 @@ export interface IJwtPayload {
   email: string;
   roles: RoleCode[];
   rol?: UserRole;
+  sucursalActivaId?: string | null;
 }
 
 export interface IAuthUser {
@@ -13,4 +14,5 @@ export interface IAuthUser {
   email: string;
   roles: RoleCode[];
   rol?: UserRole;
+  sucursalActivaId?: string | null;
 }

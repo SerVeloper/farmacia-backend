@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { UsersModule } from '../users/users.module';
+import { SucursalesModule } from '../sucursales/sucursales.module';
 import { AuthService } from './application/services/auth.service';
 import { AuthController } from './presentation/controllers/auth.controller';
 import { JwtStrategy } from './infrastructure/strategies/jwt.strategy';
@@ -18,6 +19,7 @@ import { RecoveryNotifierService } from './infrastructure/services/recovery-noti
 @Module({
   imports: [
     UsersModule,
+    SucursalesModule,
     PassportModule,
     ConfigModule,
     TypeOrmModule.forFeature([AuthSession, PasswordResetToken]),

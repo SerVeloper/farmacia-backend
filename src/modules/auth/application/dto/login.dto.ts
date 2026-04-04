@@ -4,6 +4,7 @@ import {
   IsEmail,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -28,4 +29,14 @@ export class LoginDto {
   @IsOptional()
   @IsBoolean()
   rememberMe?: boolean;
+
+  @ApiProperty({
+    required: false,
+    example: '98f90286-ec67-4d33-b5f3-e786f5cdb589',
+    description:
+      'Sucursal activa para el inicio de sesion (obligatorio para admin y contador)',
+  })
+  @IsOptional()
+  @IsUUID()
+  sucursalActivaId?: string;
 }

@@ -353,7 +353,7 @@ export class CajasService {
     sucursalId: string,
     user: ICajaAuthUser,
   ): Promise<void> {
-    if (this.isPrivilegedUser(user)) {
+    if (this.isAdminUser(user)) {
       return;
     }
 
@@ -385,6 +385,21 @@ export class CajasService {
     return (
       roleSet.has(RoleCode.ADMINISTRADOR) || roleSet.has(RoleCode.REGENTE)
     );
+  }
+
+  private isAdminUser(user: ICajaAuthUser): boolean {
+    const roleSet = new Set<string>();
+
+    if (user.roles?.length) {
+      user.roles.forEach((role) => roleSet.add(role));
+    }
+
+    if (user.rol) {
+      roleSet.add(user.rol);
+      roleSet.add(mapLegacyRoleToRoleCode(user.rol));
+    }
+
+    return roleSet.has(RoleCode.ADMINISTRADOR);
   }
 
   private ensureCajaManagementPermission(
