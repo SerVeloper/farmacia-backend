@@ -9,6 +9,7 @@ import {
 
 export enum CajaEstado {
   ABIERTA = 'abierta',
+  PAUSADA = 'pausada',
   CERRADA = 'cerrada',
 }
 

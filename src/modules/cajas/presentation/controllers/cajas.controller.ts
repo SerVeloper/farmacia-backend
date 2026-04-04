@@ -62,9 +62,25 @@ export class CajasController {
     return this.cajasService.close(id, closeCajaDto, this.getAuthUser(req));
   }
 
+  @Post(':id/pause')
+  @Roles(RoleCode.ADMINISTRADOR, RoleCode.REGENTE, RoleCode.VENDEDOR)
+  @ApiOperation({ summary: 'Pausar caja abierta sin cerrar turno' })
+  @ApiParam({ name: 'id', type: 'string', description: 'UUID de la caja' })
+  pause(@Param('id', ParseUUIDPipe) id: string, @Req() req: IRequestWithUser) {
+    return this.cajasService.pause(id, this.getAuthUser(req));
+  }
+
+  @Post(':id/reopen')
+  @Roles(RoleCode.ADMINISTRADOR, RoleCode.REGENTE, RoleCode.VENDEDOR)
+  @ApiOperation({ summary: 'Reaperturar caja pausada antes de cerrar turno' })
+  @ApiParam({ name: 'id', type: 'string', description: 'UUID de la caja' })
+  reopen(@Param('id', ParseUUIDPipe) id: string, @Req() req: IRequestWithUser) {
+    return this.cajasService.reopen(id, this.getAuthUser(req));
+  }
+
   @Get('current')
   @Roles(RoleCode.ADMINISTRADOR, RoleCode.REGENTE, RoleCode.VENDEDOR)
-  @ApiOperation({ summary: 'Obtener cajas abiertas por sucursal' })
+  @ApiOperation({ summary: 'Obtener cajas abiertas o pausadas por sucursal' })
   @ApiQuery({ name: 'sucursalId', type: 'string', required: true })
   current(@Query() query: CajaQueryDto, @Req() req: IRequestWithUser) {
     return this.cajasService.getCurrent(query, this.getAuthUser(req));

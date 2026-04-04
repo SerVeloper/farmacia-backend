@@ -8,6 +8,8 @@ import {
 
 export enum CajaMovimientoTipo {
   APERTURA = 'apertura',
+  PAUSA = 'pausa',
+  REAPERTURA = 'reapertura',
   VENTA = 'venta',
   INGRESO_MANUAL = 'ingreso_manual',
   EGRESO_MANUAL = 'egreso_manual',

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { SucursalesService } from '../../../sucursales/application/services/sucursales.service';
 import { UsersService } from '../../../users/application/services/users.service';
@@ -50,13 +50,13 @@ export class CajasService {
       where: {
         sucursalId: openCajaDto.sucursalId,
         usuarioAperturaId: user.id,
-        estado: CajaEstado.ABIERTA,
+        estado: In([CajaEstado.ABIERTA, CajaEstado.PAUSADA]),
       },
     });
 
     if (existingOpenCaja) {
       throw new BadRequestException(
-        'Ya tienes una caja abierta en esta sucursal',
+        'Ya tienes una caja abierta o pausada en esta sucursal',
       );
     }
 
@@ -103,15 +103,14 @@ export class CajasService {
       throw new NotFoundException('Caja no encontrada');
     }
 
-    if (caja.estado !== CajaEstado.ABIERTA) {
+    if (
+      caja.estado !== CajaEstado.ABIERTA &&
+      caja.estado !== CajaEstado.PAUSADA
+    ) {
       throw new BadRequestException('La caja ya se encuentra cerrada');
     }
 
-    const privileged = this.isPrivilegedUser(user);
-
-    if (!privileged && caja.usuarioAperturaId !== user.id) {
-      throw new ForbiddenException('No tienes permisos para cerrar esta caja');
-    }
+    this.ensureCajaManagementPermission(caja, user, 'cerrar');
 
     const movimientos = await this.movimientosRepository.find({
       where: { cajaId },
@@ -162,12 +161,74 @@ export class CajasService {
     return caja;
   }
 
+  async pause(cajaId: string, user: ICajaAuthUser): Promise<Caja> {
+    const caja = await this.cajasRepository.findOne({ where: { id: cajaId } });
+
+    if (!caja) {
+      throw new NotFoundException('Caja no encontrada');
+    }
+
+    if (caja.estado !== CajaEstado.ABIERTA) {
+      throw new BadRequestException('Solo se puede pausar una caja abierta');
+    }
+
+    this.ensureCajaManagementPermission(caja, user, 'pausar');
+
+    caja.estado = CajaEstado.PAUSADA;
+    await this.cajasRepository.save(caja);
+
+    await this.movimientosRepository.save(
+      this.movimientosRepository.create({
+        cajaId: caja.id,
+        tipo: CajaMovimientoTipo.PAUSA,
+        metodoPago: null,
+        numeroVenta: null,
+        detalle: 'Pausa temporal de caja',
+        monto: 0,
+        usuarioId: user.id,
+      }),
+    );
+
+    return caja;
+  }
+
+  async reopen(cajaId: string, user: ICajaAuthUser): Promise<Caja> {
+    const caja = await this.cajasRepository.findOne({ where: { id: cajaId } });
+
+    if (!caja) {
+      throw new NotFoundException('Caja no encontrada');
+    }
+
+    if (caja.estado !== CajaEstado.PAUSADA) {
+      throw new BadRequestException('Solo se puede reaperturar una caja pausada');
+    }
+
+    this.ensureCajaManagementPermission(caja, user, 'reaperturar');
+
+    caja.estado = CajaEstado.ABIERTA;
+    await this.cajasRepository.save(caja);
+
+    await this.movimientosRepository.save(
+      this.movimientosRepository.create({
+        cajaId: caja.id,
+        tipo: CajaMovimientoTipo.REAPERTURA,
+        metodoPago: null,
+        numeroVenta: null,
+        detalle: 'Reapertura de caja sin reinicio de monto',
+        monto: 0,
+        usuarioId: user.id,
+      }),
+    );
+
+    return caja;
+  }
+
   async getCurrent(query: CajaQueryDto, user: ICajaAuthUser): Promise<Caja[]> {
     await this.sucursalesService.findOne(query.sucursalId);
 
     const where = {
       sucursalId: query.sucursalId,
-      estado: CajaEstado.ABIERTA,
+      estado: In([CajaEstado.ABIERTA, CajaEstado.PAUSADA]),
       ...(this.isPrivilegedUser(user) ? {} : { usuarioAperturaId: user.id }),
     };
 
@@ -208,7 +269,9 @@ export class CajasService {
       .innerJoin(Caja, 'caja', 'caja.id = movimiento.caja_id')
       .innerJoin('users', 'usuario', 'usuario.id = movimiento.usuario_id')
       .where('caja.sucursal_id = :sucursalId', { sucursalId: query.sucursalId })
-      .andWhere('caja.estado = :estado', { estado: CajaEstado.ABIERTA })
+      .andWhere('caja.estado IN (:...estados)', {
+        estados: [CajaEstado.ABIERTA, CajaEstado.PAUSADA],
+      })
       .andWhere('movimiento.tipo = :tipo', { tipo: CajaMovimientoTipo.VENTA });
 
     if (!this.isPrivilegedUser(user)) {
@@ -297,6 +360,20 @@ export class CajasService {
     return (
       roleSet.has(RoleCode.ADMINISTRADOR) || roleSet.has(RoleCode.REGENTE)
     );
+  }
+
+  private ensureCajaManagementPermission(
+    caja: Caja,
+    user: ICajaAuthUser,
+    action: string,
+  ): void {
+    const privileged = this.isPrivilegedUser(user);
+
+    if (!privileged && caja.usuarioAperturaId !== user.id) {
+      throw new ForbiddenException(
+        `No tienes permisos para ${action} esta caja`,
+      );
+    }
   }
 
   private async generateNumeroCaja(): Promise<string> {
