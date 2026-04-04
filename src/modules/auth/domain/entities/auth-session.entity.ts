@@ -41,10 +41,10 @@ export class AuthSession {
   @Column({ name: 'last_used_at', type: 'timestamp', nullable: true })
   lastUsedAt: Date | null;
 
-  @Column({ name: 'ip_address', length: 45, nullable: true })
+  @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
   ipAddress: string | null;
 
-  @Column({ name: 'user_agent', length: 255, nullable: true })
+  @Column({ name: 'user_agent', type: 'varchar', length: 255, nullable: true })
   userAgent: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
