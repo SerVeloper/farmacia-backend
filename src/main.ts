@@ -41,7 +41,7 @@ async function bootstrap() {
     .addTag('branches', 'Sucursales')
     .addTag('products', 'Productos')
     .addTag('inventory', 'Inventario')
-    .addTag('boxes', 'Cajas')
+    .addTag('cajas', 'Cajas')
     .addTag('sales', 'Ventas')
     .build();
 
