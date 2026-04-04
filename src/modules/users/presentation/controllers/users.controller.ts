@@ -28,12 +28,12 @@ import {
   UpdateUserDto,
 } from '../../application/dto/create-user.dto';
 import { UsersService } from '../../application/services/users.service';
-import { UserRole } from '../../domain/entities/user.entity';
+import { RoleCode } from '../../domain/entities/role.entity';
 
 @ApiTags('users')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(RoleCode.ADMINISTRADOR)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}

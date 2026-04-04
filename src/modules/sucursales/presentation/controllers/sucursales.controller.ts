@@ -27,7 +27,7 @@ import {
   UpdateSucursalDto,
 } from '../../application/dto/create-sucursal.dto';
 import { SucursalesService } from '../../application/services/sucursales.service';
-import { UserRole } from '../../../users/domain/entities/user.entity';
+import { RoleCode } from '../../../users/domain/entities/role.entity';
 
 @ApiTags('sucursales')
 @ApiBearerAuth('JWT-auth')
@@ -37,7 +37,7 @@ export class SucursalesController {
   constructor(private readonly sucursalesService: SucursalesService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN)
+  @Roles(RoleCode.ADMINISTRADOR)
   @ApiOperation({ summary: 'Crear sucursal (solo admin)' })
   @ApiResponse({ status: 201, description: 'Sucursal creada exitosamente' })
   create(@Body() createSucursalDto: CreateSucursalDto) {
@@ -45,14 +45,14 @@ export class SucursalesController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(RoleCode.ADMINISTRADOR, RoleCode.REGENTE)
   @ApiOperation({ summary: 'Listar sucursales (admin y manager)' })
   findAll() {
     return this.sucursalesService.findAll();
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(RoleCode.ADMINISTRADOR, RoleCode.REGENTE)
   @ApiOperation({ summary: 'Obtener sucursal por ID' })
   @ApiParam({ name: 'id', description: 'UUID de la sucursal', type: 'string' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -60,7 +60,7 @@ export class SucursalesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(RoleCode.ADMINISTRADOR)
   @ApiOperation({ summary: 'Actualizar sucursal (solo admin)' })
   @ApiParam({ name: 'id', description: 'UUID de la sucursal', type: 'string' })
   update(
@@ -71,7 +71,7 @@ export class SucursalesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(RoleCode.ADMINISTRADOR)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Desactivar sucursal (solo admin)' })
   @ApiParam({ name: 'id', description: 'UUID de la sucursal', type: 'string' })

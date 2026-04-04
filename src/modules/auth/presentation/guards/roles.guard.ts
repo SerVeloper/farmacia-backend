@@ -6,14 +6,17 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
-import { ROLES_KEY } from '../decorators/roles.decorator';
+import { AllowedRole, ROLES_KEY } from '../decorators/roles.decorator';
+import { mapLegacyRoleToRoleCode } from '../../../users/domain/constants/roles.constants';
+import { RoleCode } from '../../../users/domain/entities/role.entity';
 import { UserRole } from '../../../users/domain/entities/user.entity';
 
 interface IRequestWithUser {
   user?: {
     id: string;
     email: string;
-    rol: UserRole;
+    roles?: RoleCode[];
+    rol?: UserRole;
   };
 }
 
@@ -22,7 +25,7 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const roles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
+    const roles = this.reflector.getAllAndOverride<AllowedRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -32,14 +35,36 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<IRequestWithUser>();
-    const userRole = request.user?.rol;
+    const userRoles = this.getRequestUserRoles(request.user);
+    const requiredRoles = new Set(roles.map((role) => role.toString()));
+    const hasPermission = userRoles.some((role) => requiredRoles.has(role));
 
-    if (!userRole || !roles.includes(userRole)) {
+    if (!hasPermission) {
       throw new ForbiddenException(
         'No tiene permisos para realizar esta accion',
       );
     }
 
     return true;
+  }
+
+  private getRequestUserRoles(user?: {
+    roles?: RoleCode[];
+    rol?: UserRole;
+  }): string[] {
+    const resolvedRoles = new Set<string>();
+
+    if (user?.roles?.length) {
+      for (const role of user.roles) {
+        resolvedRoles.add(role);
+      }
+    }
+
+    if (user?.rol) {
+      resolvedRoles.add(user.rol);
+      resolvedRoles.add(mapLegacyRoleToRoleCode(user.rol));
+    }
+
+    return Array.from(resolvedRoles);
   }
 }

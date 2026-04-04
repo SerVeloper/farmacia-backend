@@ -6,9 +6,15 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { User, UserRole } from '../../domain/entities/user.entity';
+import { Role, RoleCode } from '../../domain/entities/role.entity';
+import {
+  dedupeRoleCodes,
+  inferLegacyRoleFromRoleCodes,
+  mapLegacyRoleToRoleCode,
+} from '../../domain/constants/roles.constants';
 import {
   CreateUserDto,
   ResetPasswordDto,
@@ -26,6 +32,8 @@ export class UsersService implements IUsersService {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    @InjectRepository(Role)
+    private readonly rolesRepository: Repository<Role>,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<IUserWithoutPassword> {
@@ -39,11 +47,15 @@ export class UsersService implements IUsersService {
     }
 
     const passwordHash = await bcrypt.hash(createUserDto.password, 10);
+    const roleCodes = this.resolveRoleCodes(createUserDto);
+    const roles = await this.loadRolesOrFail(roleCodes);
+
     const user = this.usersRepository.create({
       nombre: createUserDto.nombre.trim(),
       email: normalizedEmail,
       passwordHash,
-      rol: createUserDto.rol ?? UserRole.CASHIER,
+      rol: createUserDto.rol ?? inferLegacyRoleFromRoleCodes(roleCodes),
+      roles,
       sucursalId: createUserDto.sucursalId ?? null,
     });
 
@@ -101,6 +113,19 @@ export class UsersService implements IUsersService {
       user.rol = updateUserDto.rol;
     }
 
+    if (
+      updateUserDto.rolesCodigos !== undefined ||
+      updateUserDto.rol !== undefined
+    ) {
+      const roleCodes = this.resolveRoleCodes(updateUserDto, user.rol);
+      const roles = await this.loadRolesOrFail(roleCodes);
+      user.roles = roles;
+
+      if (updateUserDto.rol === undefined) {
+        user.rol = inferLegacyRoleFromRoleCodes(roleCodes);
+      }
+    }
+
     if (updateUserDto.sucursalId !== undefined) {
       user.sucursalId = updateUserDto.sucursalId;
     }
@@ -146,6 +171,7 @@ export class UsersService implements IUsersService {
     return this.usersRepository
       .createQueryBuilder('user')
       .addSelect('user.passwordHash')
+      .leftJoinAndSelect('user.roles', 'role')
       .where('user.email = :email', { email: normalizedEmail })
       .getOne();
   }
@@ -168,12 +194,27 @@ export class UsersService implements IUsersService {
     }
 
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
+    let adminRole = await this.rolesRepository.findOne({
+      where: { codigo: RoleCode.ADMINISTRADOR },
+    });
+
+    if (!adminRole) {
+        adminRole = await this.rolesRepository.save(
+          this.rolesRepository.create({
+            codigo: RoleCode.ADMINISTRADOR,
+            nombre: 'Administrador',
+            descripcion: 'Puede gestionar todo el sistema.',
+            activo: true,
+          }),
+        );
+    }
 
     const admin = this.usersRepository.create({
       nombre: 'Administrador Inicial',
       email,
       passwordHash,
       rol: UserRole.ADMIN,
+      roles: [adminRole],
       sucursalId: null,
       activo: true,
     });
@@ -190,5 +231,43 @@ export class UsersService implements IUsersService {
 
   isAdminRole(rol: UserRole): boolean {
     return rol === UserRole.ADMIN;
+  }
+
+  private resolveRoleCodes(
+    dto: Pick<CreateUserDto, 'rolesCodigos' | 'rol'>,
+    currentLegacyRole?: UserRole,
+  ): RoleCode[] {
+    if (dto.rolesCodigos && dto.rolesCodigos.length > 0) {
+      return dedupeRoleCodes(dto.rolesCodigos);
+    }
+
+    if (dto.rol) {
+      return [mapLegacyRoleToRoleCode(dto.rol)];
+    }
+
+    if (currentLegacyRole) {
+      return [mapLegacyRoleToRoleCode(currentLegacyRole)];
+    }
+
+    return [RoleCode.VENDEDOR];
+  }
+
+  private async loadRolesOrFail(roleCodes: RoleCode[]): Promise<Role[]> {
+    const roles = await this.rolesRepository.find({
+      where: {
+        codigo: In(roleCodes),
+      },
+    });
+
+    if (roles.length !== roleCodes.length) {
+      const found = new Set(roles.map((role) => role.codigo));
+      const missing = roleCodes.filter((code) => !found.has(code));
+
+      throw new BadRequestException(
+        `Roles no encontrados: ${missing.join(', ')}`,
+      );
+    }
+
+    return roles;
   }
 }

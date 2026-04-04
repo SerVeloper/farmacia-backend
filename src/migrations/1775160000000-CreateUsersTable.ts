@@ -6,10 +6,21 @@ export class CreateUsersTable1775160000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
     await queryRunner.query(
-      `CREATE TYPE "public"."users_rol_enum" AS ENUM('admin', 'manager', 'cashier')`,
+      `DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_type t
+          JOIN pg_namespace n ON n.oid = t.typnamespace
+          WHERE t.typname = 'users_rol_enum' AND n.nspname = 'public'
+        ) THEN
+          CREATE TYPE "public"."users_rol_enum" AS ENUM('admin', 'manager', 'cashier');
+        END IF;
+      END
+      $$`,
     );
     await queryRunner.query(
-      `CREATE TABLE "users" (
+      `CREATE TABLE IF NOT EXISTS "users" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "nombre" character varying(150) NOT NULL,
         "email" character varying(180) NOT NULL,

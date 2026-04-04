@@ -4,6 +4,8 @@ import { config } from 'dotenv';
 
 import { CategoriasSeeder } from './categorias.seed';
 import { MarcasSeeder } from './marcas.seed';
+import { RolesSeeder } from './roles.seed';
+import { UsersSeeder } from './users.seed';
 
 config();
 
@@ -31,6 +33,16 @@ async function runSeeders() {
 
     const marcasSeeder = new MarcasSeeder(dataSource);
     await marcasSeeder.run();
+
+    console.log('');
+
+    const rolesSeeder = new RolesSeeder(dataSource);
+    await rolesSeeder.run();
+
+    console.log('');
+
+    const usersSeeder = new UsersSeeder(dataSource);
+    await usersSeeder.run();
 
     console.log('\n🎉 Todos los seeders ejecutados correctamente');
   } catch (error) {

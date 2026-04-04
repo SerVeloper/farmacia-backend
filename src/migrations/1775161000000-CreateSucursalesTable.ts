@@ -5,7 +5,7 @@ export class CreateSucursalesTable1775161000000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TABLE "sucursales" (
+      `CREATE TABLE IF NOT EXISTS "sucursales" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "codigo" character varying(20) NOT NULL,
         "nombre" character varying(120) NOT NULL,
@@ -21,10 +21,24 @@ export class CreateSucursalesTable1775161000000 implements MigrationInterface {
     );
 
     await queryRunner.query(
-      `ALTER TABLE "users"
-       ADD CONSTRAINT "FK_users_sucursal"
-       FOREIGN KEY ("sucursal_id") REFERENCES "sucursales"("id")
-       ON DELETE SET NULL ON UPDATE NO ACTION`,
+      `DO $$
+       BEGIN
+         IF EXISTS (
+           SELECT 1 FROM information_schema.tables
+           WHERE table_schema = 'public' AND table_name = 'users'
+         ) AND NOT EXISTS (
+           SELECT 1
+           FROM information_schema.table_constraints
+           WHERE constraint_name = 'FK_users_sucursal'
+             AND table_name = 'users'
+         ) THEN
+           ALTER TABLE "users"
+           ADD CONSTRAINT "FK_users_sucursal"
+           FOREIGN KEY ("sucursal_id") REFERENCES "sucursales"("id")
+           ON DELETE SET NULL ON UPDATE NO ACTION;
+         END IF;
+       END
+       $$`,
     );
   }
 

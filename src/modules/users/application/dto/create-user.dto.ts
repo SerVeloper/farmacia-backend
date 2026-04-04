@@ -1,8 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayUnique,
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsArray,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -12,6 +14,7 @@ import {
 } from 'class-validator';
 
 import { UserRole } from '../../domain/entities/user.entity';
+import { RoleCode } from '../../domain/entities/role.entity';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Administrador General' })
@@ -35,6 +38,18 @@ export class CreateUserDto {
   @IsOptional()
   @IsEnum(UserRole)
   rol?: UserRole;
+
+  @ApiPropertyOptional({
+    description: 'Codigos de roles del usuario',
+    enum: RoleCode,
+    isArray: true,
+    example: [RoleCode.VENDEDOR, RoleCode.CONTADOR],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(RoleCode, { each: true })
+  rolesCodigos?: RoleCode[];
 
   @ApiPropertyOptional({
     description: 'UUID de sucursal (opcional para admin global)',
@@ -61,6 +76,18 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(UserRole)
   rol?: UserRole;
+
+  @ApiPropertyOptional({
+    description: 'Codigos de roles del usuario',
+    enum: RoleCode,
+    isArray: true,
+    example: [RoleCode.REGENTE],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(RoleCode, { each: true })
+  rolesCodigos?: RoleCode[];
 
   @ApiPropertyOptional()
   @IsOptional()

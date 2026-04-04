@@ -2,9 +2,13 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinTable,
+  ManyToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+
+import { Role } from './role.entity';
 
 export enum UserRole {
   ADMIN = 'admin',
@@ -32,6 +36,14 @@ export class User {
     default: UserRole.CASHIER,
   })
   rol: UserRole;
+
+  @ManyToMany(() => Role, (role) => role.users, { eager: true })
+  @JoinTable({
+    name: 'users_roles',
+    joinColumn: { name: 'user_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'role_id', referencedColumnName: 'id' },
+  })
+  roles: Role[];
 
   @Column({ name: 'sucursal_id', type: 'uuid', nullable: true })
   sucursalId: string | null;

@@ -10,6 +10,9 @@ import * as bcrypt from 'bcryptjs';
 import { IJwtPayload } from '../interfaces/jwt-payload.interface';
 import { LoginDto } from '../dto/login.dto';
 import { UsersService } from '../../../users/application/services/users.service';
+import { RoleCode } from '../../../users/domain/entities/role.entity';
+import { mapLegacyRoleToRoleCode } from '../../../users/domain/constants/roles.constants';
+import { UserRole } from '../../../users/domain/entities/user.entity';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -51,6 +54,7 @@ export class AuthService implements OnModuleInit {
     const payload: IJwtPayload = {
       sub: user.id,
       email: user.email,
+      roles: this.getRoleCodes(user),
       rol: user.rol,
     };
 
@@ -67,5 +71,20 @@ export class AuthService implements OnModuleInit {
 
   async getProfile(userId: string) {
     return this.usersService.findOne(userId);
+  }
+
+  private getRoleCodes(user: {
+    roles?: Array<{ codigo: RoleCode }>;
+    rol?: UserRole;
+  }): RoleCode[] {
+    if (user.roles && user.roles.length > 0) {
+      return user.roles.map((role) => role.codigo);
+    }
+
+    if (user.rol) {
+      return [mapLegacyRoleToRoleCode(user.rol)];
+    }
+
+    return [RoleCode.VENDEDOR];
   }
 }
