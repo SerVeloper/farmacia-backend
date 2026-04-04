@@ -35,6 +35,7 @@ interface IRequestWithUser {
     id: string;
     roles?: RoleCode[];
     rol?: UserRole;
+    sucursalActivaId?: string | null;
   };
 }
 

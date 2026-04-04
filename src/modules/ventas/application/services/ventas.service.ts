@@ -39,6 +39,7 @@ interface IVentasAuthUser {
   id: string;
   roles?: RoleCode[];
   rol?: UserRole;
+  sucursalActivaId?: string | null;
 }
 
 @Injectable()
@@ -179,6 +180,7 @@ export class VentasService {
   }
 
   async findAll(query: VentasQueryDto, user: IVentasAuthUser) {
+    const sucursalScopeId = await this.resolveSucursalId(query.sucursalId, user);
     const page = Math.max(1, query.page || 1);
     const limit = Math.min(100, Math.max(1, query.limit || 15));
 
@@ -200,17 +202,15 @@ export class VentasService {
         'venta.fecha_creacion AS fechaCreacion',
       ]);
 
-    if (!this.isPrivilegedUser(user)) {
+    qb.andWhere('venta.sucursal_id = :scopeSucursalId', {
+      scopeSucursalId: sucursalScopeId,
+    });
+
+    if (!this.canViewAllSales(user)) {
       qb.andWhere('venta.vendedor_id = :vendedorId', { vendedorId: user.id });
     }
 
-    if (query.sucursalId) {
-      qb.andWhere('venta.sucursal_id = :sucursalId', {
-        sucursalId: query.sucursalId,
-      });
-    }
-
-    if (query.vendedorId && this.isPrivilegedUser(user)) {
+    if (query.vendedorId && this.canViewAllSales(user)) {
       qb.andWhere('venta.vendedor_id = :filtroVendedorId', {
         filtroVendedorId: query.vendedorId,
       });
@@ -271,7 +271,7 @@ export class VentasService {
       throw new NotFoundException('Venta no encontrada');
     }
 
-    if (!this.isPrivilegedUser(user) && venta.vendedorId !== user.id) {
+    if (!this.canViewAllSales(user) && venta.vendedorId !== user.id) {
       throw new ForbiddenException('No tienes permisos para ver esta venta');
     }
 
@@ -462,12 +462,22 @@ export class VentasService {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    if (this.isPrivilegedUser(user)) {
-      if (!requestedSucursalId) {
-        throw new BadRequestException('Debe seleccionar una sucursal');
+    if (this.canSwitchSucursalOnSession(user)) {
+      const sucursalActivaId = user.sucursalActivaId;
+
+      if (!sucursalActivaId) {
+        throw new BadRequestException(
+          'Debe iniciar sesion seleccionando una sucursal activa',
+        );
       }
 
-      return requestedSucursalId;
+      if (requestedSucursalId && requestedSucursalId !== sucursalActivaId) {
+        throw new ForbiddenException(
+          'La sucursal seleccionada no coincide con tu contexto activo',
+        );
+      }
+
+      return sucursalActivaId;
     }
 
     if (!currentUser.sucursalId) {
@@ -500,7 +510,7 @@ export class VentasService {
     return `${prefix}${String(count + 1).padStart(4, '0')}`;
   }
 
-  private isPrivilegedUser(user: IVentasAuthUser): boolean {
+  private canViewAllSales(user: IVentasAuthUser): boolean {
     const roleSet = new Set<string>();
 
     if (user.roles?.length) {
@@ -514,6 +524,23 @@ export class VentasService {
 
     return (
       roleSet.has(RoleCode.ADMINISTRADOR) || roleSet.has(RoleCode.REGENTE)
+    );
+  }
+
+  private canSwitchSucursalOnSession(user: IVentasAuthUser): boolean {
+    const roleSet = new Set<string>();
+
+    if (user.roles?.length) {
+      user.roles.forEach((role) => roleSet.add(role));
+    }
+
+    if (user.rol) {
+      roleSet.add(user.rol);
+      roleSet.add(mapLegacyRoleToRoleCode(user.rol));
+    }
+
+    return (
+      roleSet.has(RoleCode.ADMINISTRADOR) || roleSet.has(RoleCode.CONTADOR)
     );
   }
 }

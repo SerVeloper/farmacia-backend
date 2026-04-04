@@ -48,6 +48,7 @@ export class UsersService implements IUsersService {
 
     const passwordHash = await bcrypt.hash(createUserDto.password, 10);
     const roleCodes = this.resolveRoleCodes(createUserDto);
+    const sucursalId = this.resolveSucursalByRole(roleCodes, createUserDto.sucursalId);
     const roles = await this.loadRolesOrFail(roleCodes);
 
     const user = this.usersRepository.create({
@@ -56,7 +57,7 @@ export class UsersService implements IUsersService {
       passwordHash,
       rol: createUserDto.rol ?? inferLegacyRoleFromRoleCodes(roleCodes),
       roles,
-      sucursalId: createUserDto.sucursalId ?? null,
+      sucursalId,
     });
 
     const saved = await this.usersRepository.save(user);
@@ -126,9 +127,14 @@ export class UsersService implements IUsersService {
       }
     }
 
-    if (updateUserDto.sucursalId !== undefined) {
-      user.sucursalId = updateUserDto.sucursalId;
-    }
+    const nextSucursalId =
+      updateUserDto.sucursalId !== undefined
+        ? updateUserDto.sucursalId
+        : user.sucursalId;
+    user.sucursalId = this.resolveSucursalByRole(
+      this.resolveRoleCodes(updateUserDto, user.rol),
+      nextSucursalId,
+    );
 
     if (updateUserDto.activo !== undefined) {
       user.activo = updateUserDto.activo;
@@ -289,5 +295,29 @@ export class UsersService implements IUsersService {
     }
 
     return roles;
+  }
+
+  private resolveSucursalByRole(
+    roleCodes: RoleCode[],
+    sucursalId?: string | null,
+  ): string | null {
+    const normalizedSucursalId = sucursalId ?? null;
+    const requiresSucursal =
+      roleCodes.includes(RoleCode.REGENTE) ||
+      roleCodes.includes(RoleCode.VENDEDOR);
+
+    if (requiresSucursal && !normalizedSucursalId) {
+      throw new BadRequestException(
+        'Regente y vendedor deben tener una sucursal asignada',
+      );
+    }
+
+    if (!requiresSucursal && normalizedSucursalId) {
+      throw new BadRequestException(
+        'Administrador y contador no deben tener una sucursal fija asignada',
+      );
+    }
+
+    return normalizedSucursalId;
   }
 }

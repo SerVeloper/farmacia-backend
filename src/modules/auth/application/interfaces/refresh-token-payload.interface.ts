@@ -3,4 +3,5 @@ export interface IRefreshTokenPayload {
   sid: string;
   fid: string;
   rm: boolean;
+  sa?: string | null;
 }
