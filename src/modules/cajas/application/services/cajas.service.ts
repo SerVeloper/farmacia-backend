@@ -199,11 +199,36 @@ export class CajasService {
       throw new NotFoundException('Caja no encontrada');
     }
 
-    if (caja.estado !== CajaEstado.PAUSADA) {
-      throw new BadRequestException('Solo se puede reaperturar una caja pausada');
+    if (caja.estado !== CajaEstado.PAUSADA && caja.estado !== CajaEstado.CERRADA) {
+      throw new BadRequestException(
+        'Solo se puede reaperturar una caja pausada o cerrada',
+      );
     }
 
     this.ensureCajaManagementPermission(caja, user, 'reaperturar');
+
+    if (caja.estado === CajaEstado.CERRADA) {
+      const fechaCierre = caja.fechaCierre;
+
+      if (!fechaCierre || !this.isSameDay(fechaCierre, new Date())) {
+        throw new BadRequestException(
+          'Solo se puede reaperturar una caja cerrada durante la misma sesion de trabajo',
+        );
+      }
+
+      if (!this.isPrivilegedUser(user) && caja.usuarioCierreId !== user.id) {
+        throw new ForbiddenException(
+          'Solo el usuario que cerro la caja puede reaperturarla en su sesion',
+        );
+      }
+
+      caja.fechaCierre = null;
+      caja.usuarioCierreId = null;
+      caja.montoCierreEsperado = null;
+      caja.montoCierreReal = null;
+      caja.diferencia = null;
+      caja.observacionCierre = null;
+    }
 
     caja.estado = CajaEstado.ABIERTA;
     await this.cajasRepository.save(caja);
@@ -401,5 +426,13 @@ export class CajasService {
     return movimientos
       .filter((movimiento) => target.has(movimiento.tipo))
       .reduce((sum, movimiento) => sum + Number(movimiento.monto), 0);
+  }
+
+  private isSameDay(left: Date, right: Date): boolean {
+    return (
+      left.getFullYear() === right.getFullYear() &&
+      left.getMonth() === right.getMonth() &&
+      left.getDate() === right.getDate()
+    );
   }
 }
