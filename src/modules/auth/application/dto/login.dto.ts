@@ -34,7 +34,7 @@ export class LoginDto {
     required: false,
     example: '98f90286-ec67-4d33-b5f3-e786f5cdb589',
     description:
-      'Sucursal activa para el inicio de sesion (obligatorio para admin y contador)',
+      'Sucursal activa para el inicio de sesion. Si no se envia para admin o contador, se asigna la primera sucursal activa',
   })
   @IsOptional()
   @IsUUID()

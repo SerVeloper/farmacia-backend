@@ -13,6 +13,7 @@ describe('LotesService', () => {
     id: '123e4567-e89b-12d3-a456-426614174000',
     productoId: '123e4567-e89b-12d3-a456-426614174001',
     numeroLote: 'LOTE001',
+    numeroLoteNormalizado: 'LOTE001',
     fechaVencimiento: new Date('2025-12-31'),
     cantidadInicial: 100,
     activo: true,
@@ -84,6 +85,96 @@ describe('LotesService', () => {
 
       await expect(service.create(createDto)).rejects.toThrow(
         BadRequestException,
+      );
+    });
+  });
+
+  describe('identidad triple normalizada (R2)', () => {
+    it('debe persistir numeroLoteNormalizado en trim + upper', async () => {
+      repository.findOne.mockResolvedValue(null);
+      repository.create.mockImplementation((data: any) => ({
+        ...mockLote,
+        ...data,
+      }));
+      repository.save.mockImplementation((l: any) => Promise.resolve(l));
+
+      await service.create({
+        productoId: '123e4567-e89b-12d3-a456-426614174001',
+        numeroLote: '  l-001  ',
+        fechaVencimiento: '2026-12-31',
+        cantidadInicial: 10,
+      });
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ numeroLoteNormalizado: 'L-001' }),
+      );
+    });
+
+    it('debe buscar duplicados por identidad triple normalizada', async () => {
+      repository.findOne.mockResolvedValue({
+        ...mockLote,
+        numeroLoteNormalizado: 'L-001',
+      });
+
+      await expect(
+        service.create({
+          productoId: '123e4567-e89b-12d3-a456-426614174001',
+          numeroLote: ' l-001 ',
+          fechaVencimiento: '2026-12-31',
+          cantidadInicial: 10,
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(repository.findOne).toHaveBeenCalledWith({
+        where: {
+          productoId: '123e4567-e89b-12d3-a456-426614174001',
+          numeroLoteNormalizado: 'L-001',
+          fechaVencimiento: new Date('2026-12-31'),
+        },
+      });
+      expect(repository.create).not.toHaveBeenCalled();
+    });
+
+    it('debe permitir el mismo numero de lote con distinta fecha de vencimiento', async () => {
+      repository.findOne.mockResolvedValue(null);
+      repository.create.mockImplementation((data: any) => ({
+        ...mockLote,
+        ...data,
+      }));
+      repository.save.mockImplementation((l: any) => Promise.resolve(l));
+
+      const result = await service.create({
+        productoId: '123e4567-e89b-12d3-a456-426614174001',
+        numeroLote: 'LOTE001',
+        fechaVencimiento: '2027-06-30',
+        cantidadInicial: 20,
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          numeroLoteNormalizado: 'LOTE001',
+          fechaVencimiento: new Date('2027-06-30'),
+        }),
+      );
+    });
+
+    it('debe aceptar fecha de vencimiento ya vencida (R4/R9: solo alerta, no bloqueo)', async () => {
+      repository.findOne.mockResolvedValue(null);
+      repository.create.mockImplementation((data: any) => ({
+        ...mockLote,
+        ...data,
+      }));
+      repository.save.mockImplementation((l: any) => Promise.resolve(l));
+
+      const result = await service.create({
+        productoId: '123e4567-e89b-12d3-a456-426614174001',
+        numeroLote: 'LOTE-VENCIDO',
+        fechaVencimiento: '2020-01-31',
+        cantidadInicial: 5,
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({ fechaVencimiento: new Date('2020-01-31') }),
       );
     });
   });

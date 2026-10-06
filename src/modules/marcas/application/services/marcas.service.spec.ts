@@ -91,14 +91,63 @@ describe('MarcasService', () => {
   });
 
   describe('findAll', () => {
-    it('should return paginated marcas', async () => {
+    it('should return paginated marcas with page, limit and totalPages', async () => {
       const marcas = [mockMarca];
-      repository.findAndCount.mockResolvedValue([marcas, 1]);
+      repository.findAndCount.mockResolvedValue([marcas, 25]);
 
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ page: 3, limit: 10 });
 
-      expect(result.data).toEqual(marcas);
-      expect(result.total).toBe(1);
+      const opciones = repository.findAndCount.mock.calls[0][0] ?? {};
+      expect(opciones.skip).toBe(20);
+      expect(opciones.take).toBe(10);
+      expect(result).toEqual({
+        data: marcas,
+        total: 25,
+        page: 3,
+        limit: 10,
+        totalPages: 3,
+      });
+    });
+
+    it('should return the full list when limit is omitted', async () => {
+      const marcas = [mockMarca, { ...mockMarca, id: 'otro-id' }];
+      repository.findAndCount.mockResolvedValue([marcas, 2]);
+
+      const result = await service.findAll({ page: 1 });
+
+      const opciones = repository.findAndCount.mock.calls[0][0] ?? {};
+      expect(opciones.skip).toBeUndefined();
+      expect(opciones.take).toBeUndefined();
+      expect(result).toEqual({
+        data: marcas,
+        total: 2,
+        page: 1,
+        limit: 2,
+        totalPages: 1,
+      });
+    });
+
+    it('should ignore page and return full list when limit is omitted', async () => {
+      repository.findAndCount.mockResolvedValue([[mockMarca], 1]);
+
+      const result = await service.findAll({ page: 99 });
+
+      expect(result.page).toBe(1);
+      expect(result.totalPages).toBe(1);
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('should return empty data but correct total when page is out of range', async () => {
+      repository.findAndCount.mockResolvedValue([[], 25]);
+
+      const result = await service.findAll({ page: 99, limit: 10 });
+
+      const opciones = repository.findAndCount.mock.calls[0][0] ?? {};
+      expect(opciones.skip).toBe(980);
+      expect(result.data).toEqual([]);
+      expect(result.total).toBe(25);
+      expect(result.page).toBe(99);
+      expect(result.totalPages).toBe(3);
     });
 
     it('should return empty array when no marcas', async () => {
@@ -108,6 +157,9 @@ describe('MarcasService', () => {
 
       expect(result.data).toEqual([]);
       expect(result.total).toBe(0);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(0);
+      expect(result.totalPages).toBe(1);
     });
   });
 

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   OnModuleInit,
   UnauthorizedException,
@@ -31,6 +32,12 @@ import { RecoveryNotifierService } from '../../infrastructure/services/recovery-
 interface IAuthRequestMetadata {
   ipAddress?: string;
   userAgent?: string | string[];
+}
+
+export interface IBranchOption {
+  id: string;
+  codigo: string;
+  nombre: string;
 }
 
 @Injectable()
@@ -142,7 +149,11 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  async refresh(refreshToken: string, metadata: IAuthRequestMetadata = {}) {
+  async refresh(
+    refreshToken: string,
+    metadata: IAuthRequestMetadata = {},
+    requestedSucursalId?: string,
+  ) {
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token requerido');
     }
@@ -185,6 +196,13 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('Sesion invalida');
     }
 
+    const roleCodes = this.getRoleCodes(user);
+    const sucursalActivaId = await this.resolveSucursalActivaForRefresh(user, {
+      roleCodes,
+      currentSucursalId: payload.sa,
+      requestedSucursalId,
+    });
+
     const sessionTtl = this.getSessionTtl(session.rememberMe);
     const sessionMaxAgeMs = this.parseDurationToMs(sessionTtl);
     const newSession = await this.authSessionsRepository.save(
@@ -209,7 +227,7 @@ export class AuthService implements OnModuleInit {
       sid: newSession.id,
       fid: session.familyId,
       rm: session.rememberMe,
-      sa: payload.sa,
+      sa: sucursalActivaId,
     });
 
     newSession.refreshTokenHash = this.hashValue(newRefreshToken);
@@ -222,9 +240,9 @@ export class AuthService implements OnModuleInit {
     const accessPayload: IJwtPayload = {
       sub: user.id,
       email: user.email,
-      roles: this.getRoleCodes(user),
+      roles: roleCodes,
       rol: user.rol,
-      sucursalActivaId: payload.sa || null,
+      sucursalActivaId,
     };
     const accessTokenTtl = this.getAccessTokenTtl();
     const accessToken = await this.jwtService.signAsync(accessPayload, {
@@ -238,6 +256,7 @@ export class AuthService implements OnModuleInit {
       expiresIn: accessTokenTtl,
       sessionExpiresIn: sessionTtl,
       sessionMaxAgeMs,
+      sucursalActivaId,
     };
   }
 
@@ -362,14 +381,35 @@ export class AuthService implements OnModuleInit {
   }
 
   async getLoginSucursales() {
-    const sucursales = await this.sucursalesService.findAll();
-    return sucursales
-      .filter((sucursal) => sucursal.activo)
-      .map((sucursal) => ({
-        id: sucursal.id,
-        codigo: sucursal.codigo,
-        nombre: sucursal.nombre,
-      }));
+    return this.getActiveBranchOptions();
+  }
+
+  async getAvailableSucursales(userId: string): Promise<IBranchOption[]> {
+    const user = await this.usersService.findByIdForAuth(userId);
+
+    if (!user || !user.activo) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+
+    const roleCodes = this.getRoleCodes(user);
+
+    if (this.requiresSucursalSelection(roleCodes)) {
+      return this.getActiveBranchOptions();
+    }
+
+    if (!user.sucursalId) {
+      throw new BadRequestException(
+        'El usuario requiere una sucursal asignada para operar',
+      );
+    }
+
+    const sucursal = await this.sucursalesService.findOne(user.sucursalId);
+
+    if (!sucursal.activo) {
+      throw new BadRequestException('La sucursal asignada no esta activa');
+    }
+
+    return [this.toBranchOption(sucursal)];
   }
 
   private async signRefreshToken(payload: IRefreshTokenPayload): Promise<string> {
@@ -489,21 +529,25 @@ export class AuthService implements OnModuleInit {
     },
   ): Promise<string | null> {
     if (this.requiresSucursalSelection(options.roleCodes)) {
-      if (!options.requestedSucursalId) {
-        throw new BadRequestException(
-          'Debe seleccionar una sucursal para iniciar sesion',
+      if (options.requestedSucursalId) {
+        const sucursal = await this.sucursalesService.findOne(
+          options.requestedSucursalId,
         );
+
+        if (!sucursal.activo) {
+          throw new BadRequestException('La sucursal seleccionada no esta activa');
+        }
+
+        return sucursal.id;
       }
 
-      const sucursal = await this.sucursalesService.findOne(
-        options.requestedSucursalId,
-      );
+      const firstActiveBranch = await this.getFirstActiveBranch();
 
-      if (!sucursal.activo) {
-        throw new BadRequestException('La sucursal seleccionada no esta activa');
+      if (!firstActiveBranch) {
+        throw new BadRequestException('No hay sucursales activas para operar');
       }
 
-      return sucursal.id;
+      return firstActiveBranch.id;
     }
 
     if (this.requiresAssignedSucursal(options.roleCodes)) {
@@ -517,6 +561,93 @@ export class AuthService implements OnModuleInit {
     }
 
     return null;
+  }
+
+  private async resolveSucursalActivaForRefresh(
+    user: { sucursalId?: string | null },
+    options: {
+      roleCodes: RoleCode[];
+      currentSucursalId?: string | null;
+      requestedSucursalId?: string;
+    },
+  ): Promise<string | null> {
+    if (this.requiresSucursalSelection(options.roleCodes)) {
+      if (options.requestedSucursalId) {
+        const sucursal = await this.sucursalesService.findOne(
+          options.requestedSucursalId,
+        );
+
+        if (!sucursal.activo) {
+          throw new BadRequestException('La sucursal seleccionada no esta activa');
+        }
+
+        return sucursal.id;
+      }
+
+      if (options.currentSucursalId) {
+        return options.currentSucursalId;
+      }
+
+      const firstActiveBranch = await this.getFirstActiveBranch();
+
+      if (!firstActiveBranch) {
+        throw new BadRequestException('No hay sucursales activas para operar');
+      }
+
+      return firstActiveBranch.id;
+    }
+
+    if (options.requestedSucursalId) {
+      throw new ForbiddenException(
+        'No tienes permisos para cambiar la sucursal activa',
+      );
+    }
+
+    if (this.requiresAssignedSucursal(options.roleCodes)) {
+      if (!user.sucursalId) {
+        throw new BadRequestException(
+          'El usuario requiere una sucursal asignada para operar',
+        );
+      }
+
+      return user.sucursalId;
+    }
+
+    return null;
+  }
+
+  private async getFirstActiveBranch() {
+    const activeBranches = await this.getActiveBranches();
+    return activeBranches[0] ?? null;
+  }
+
+  private async getActiveBranchOptions(): Promise<IBranchOption[]> {
+    const activeBranches = await this.getActiveBranches();
+    return activeBranches.map((branch) => this.toBranchOption(branch));
+  }
+
+  private async getActiveBranches() {
+    const sucursales = await this.sucursalesService.findAll();
+
+    return sucursales
+      .filter((sucursal) => sucursal.activo)
+      .sort(
+        (a, b) =>
+          new Date(a.fechaCreacion).getTime() -
+          new Date(b.fechaCreacion).getTime(),
+      );
+  }
+
+  private toBranchOption(sucursal: {
+    id: string;
+    codigo: string;
+    nombre: string;
+  }): IBranchOption {
+    return {
+      id: sucursal.id,
+      codigo: sucursal.codigo,
+      nombre: sucursal.nombre,
+    };
   }
 
   private requiresSucursalSelection(roleCodes: RoleCode[]): boolean {

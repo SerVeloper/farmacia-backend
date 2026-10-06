@@ -2,23 +2,40 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  QueryRunner,
+  Repository,
+} from 'typeorm';
 
+import {
+  CorrelativosService,
+  CorrelativoTipo,
+  formatearNumeroCorrelativo,
+} from '../../../../common/correlativos/correlativos.service';
 import { SucursalesService } from '../../../sucursales/application/services/sucursales.service';
 import { UsersService } from '../../../users/application/services/users.service';
 import { RoleCode } from '../../../users/domain/entities/role.entity';
 import { UserRole } from '../../../users/domain/entities/user.entity';
 import { mapLegacyRoleToRoleCode } from '../../../users/domain/constants/roles.constants';
+import {
+  VentaMetodoPago,
+  VentaPago,
+} from '../../../ventas/domain/entities/venta-pago.entity';
+import {
+  Venta,
+  VentaEstado,
+} from '../../../ventas/domain/entities/venta.entity';
 import { CajaQueryDto } from '../dto/caja-query.dto';
 import { CloseCajaDto } from '../dto/close-caja.dto';
 import { OpenCajaDto } from '../dto/open-caja.dto';
-import {
-  Caja,
-  CajaEstado,
-} from '../../domain/entities/caja.entity';
+import { Caja, CajaEstado } from '../../domain/entities/caja.entity';
 import {
   CajaMetodoPago,
   CajaMovimiento,
@@ -33,11 +50,16 @@ interface ICajaAuthUser {
 
 @Injectable()
 export class CajasService {
+  private readonly logger = new Logger(CajasService.name);
+
   constructor(
     @InjectRepository(Caja)
     private readonly cajasRepository: Repository<Caja>,
     @InjectRepository(CajaMovimiento)
     private readonly movimientosRepository: Repository<CajaMovimiento>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
+    private readonly correlativosService: CorrelativosService,
     private readonly sucursalesService: SucursalesService,
     private readonly usersService: UsersService,
   ) {}
@@ -60,36 +82,54 @@ export class CajasService {
       );
     }
 
-    const caja = await this.cajasRepository.save(
-      this.cajasRepository.create({
-        numeroCaja: await this.generateNumeroCaja(),
-        sucursalId: openCajaDto.sucursalId,
-        usuarioAperturaId: user.id,
-        estado: CajaEstado.ABIERTA,
-        fechaApertura: new Date(),
-        montoApertura: openCajaDto.montoApertura,
-        fechaCierre: null,
-        usuarioCierreId: null,
-        montoCierreEsperado: null,
-        montoCierreReal: null,
-        diferencia: null,
-        observacionCierre: null,
-      }),
-    );
+    const { manager, queryRunner } = await this.iniciarTransaccion();
 
-    await this.movimientosRepository.save(
-      this.movimientosRepository.create({
-        cajaId: caja.id,
-        tipo: CajaMovimientoTipo.APERTURA,
-        metodoPago: null,
-        numeroVenta: null,
-        detalle: 'Apertura de caja',
-        monto: openCajaDto.montoApertura,
-        usuarioId: user.id,
-      }),
-    );
+    try {
+      const numeroCaja = await this.generarNumeroCaja(
+        openCajaDto.sucursalId,
+        manager,
+      );
 
-    return caja;
+      const caja = await manager.save(
+        Caja,
+        manager.create(Caja, {
+          numeroCaja,
+          sucursalId: openCajaDto.sucursalId,
+          usuarioAperturaId: user.id,
+          estado: CajaEstado.ABIERTA,
+          fechaApertura: new Date(),
+          montoApertura: openCajaDto.montoApertura,
+          fechaCierre: null,
+          usuarioCierreId: null,
+          montoCierreEsperado: null,
+          montoCierreReal: null,
+          diferencia: null,
+          observacionCierre: null,
+        }),
+      );
+
+      await manager.save(
+        CajaMovimiento,
+        manager.create(CajaMovimiento, {
+          cajaId: caja.id,
+          tipo: CajaMovimientoTipo.APERTURA,
+          metodoPago: null,
+          numeroVenta: null,
+          detalle: 'Apertura de caja',
+          monto: openCajaDto.montoApertura,
+          usuarioId: user.id,
+        }),
+      );
+
+      await this.commitTransaccion(queryRunner);
+
+      return caja;
+    } catch (error) {
+      await this.revertirTransaccion(queryRunner, 'apertura de caja');
+      throw error;
+    } finally {
+      await this.liberarQueryRunner(queryRunner);
+    }
   }
 
   async close(
@@ -97,68 +137,96 @@ export class CajasService {
     closeCajaDto: CloseCajaDto,
     user: ICajaAuthUser,
   ): Promise<Caja> {
-    const caja = await this.cajasRepository.findOne({ where: { id: cajaId } });
+    const { manager, queryRunner } = await this.iniciarTransaccion();
 
-    if (!caja) {
-      throw new NotFoundException('Caja no encontrada');
-    }
+    try {
+      const caja = await manager.findOne(Caja, {
+        where: { id: cajaId },
+        lock: { mode: 'pessimistic_write' },
+      });
 
-    if (
-      caja.estado !== CajaEstado.ABIERTA &&
-      caja.estado !== CajaEstado.PAUSADA
-    ) {
-      throw new BadRequestException('La caja ya se encuentra cerrada');
-    }
+      if (!caja) {
+        throw new NotFoundException('Caja no encontrada');
+      }
 
-    this.ensureCajaManagementPermission(caja, user, 'cerrar');
+      if (
+        caja.estado !== CajaEstado.ABIERTA &&
+        caja.estado !== CajaEstado.PAUSADA
+      ) {
+        throw new BadRequestException('La caja ya se encuentra cerrada');
+      }
 
-    const movimientos = await this.movimientosRepository.find({
-      where: { cajaId },
-    });
+      this.ensureCajaManagementPermission(caja, user, 'cerrar');
 
-    const totalVentas = this.sumMovements(
-      movimientos,
-      CajaMovimientoTipo.VENTA,
-      CajaMovimientoTipo.INGRESO_MANUAL,
-    );
-    const totalEgresos = this.sumMovements(
-      movimientos,
-      CajaMovimientoTipo.EGRESO_MANUAL,
-      CajaMovimientoTipo.ANULACION_VENTA,
-    );
+      const efectivoVentas = await this.calcularEfectivoVentas(cajaId, manager);
 
-    const montoEsperado = Number(caja.montoApertura) + totalVentas - totalEgresos;
-    const diferencia = Number(closeCajaDto.montoCierreReal) - montoEsperado;
+      const movimientosManuales = await manager.find(CajaMovimiento, {
+        where: {
+          cajaId,
+          tipo: In([
+            CajaMovimientoTipo.INGRESO_MANUAL,
+            CajaMovimientoTipo.EGRESO_MANUAL,
+          ]),
+        },
+      });
 
-    if (Math.abs(diferencia) > 0.009 && !closeCajaDto.observacion?.trim()) {
-      throw new BadRequestException(
-        'Debe registrar una observacion cuando exista diferencia de cierre',
+      const totalIngresosManual = this.sumarMovimientos(
+        movimientosManuales,
+        CajaMovimientoTipo.INGRESO_MANUAL,
       );
+      const totalEgresosManual = this.sumarMovimientos(
+        movimientosManuales,
+        CajaMovimientoTipo.EGRESO_MANUAL,
+      );
+
+      const montoEsperado = this.aDosDecimales(
+        Number(caja.montoApertura || 0) +
+          efectivoVentas +
+          totalIngresosManual -
+          totalEgresosManual,
+      );
+      const diferencia = this.aDosDecimales(
+        Number(closeCajaDto.montoCierreReal) - montoEsperado,
+      );
+
+      if (Math.abs(diferencia) > 0.009 && !closeCajaDto.observacion?.trim()) {
+        throw new BadRequestException(
+          'Debe registrar una observacion cuando exista diferencia de cierre',
+        );
+      }
+
+      caja.estado = CajaEstado.CERRADA;
+      caja.fechaCierre = new Date();
+      caja.usuarioCierreId = user.id;
+      caja.montoCierreEsperado = montoEsperado;
+      caja.montoCierreReal = closeCajaDto.montoCierreReal;
+      caja.diferencia = diferencia;
+      caja.observacionCierre = closeCajaDto.observacion?.trim() || null;
+
+      await manager.save(Caja, caja);
+
+      await manager.save(
+        CajaMovimiento,
+        manager.create(CajaMovimiento, {
+          cajaId: caja.id,
+          tipo: CajaMovimientoTipo.CIERRE,
+          metodoPago: null,
+          numeroVenta: null,
+          detalle: 'Cierre de caja',
+          monto: closeCajaDto.montoCierreReal,
+          usuarioId: user.id,
+        }),
+      );
+
+      await this.commitTransaccion(queryRunner);
+
+      return caja;
+    } catch (error) {
+      await this.revertirTransaccion(queryRunner, `cierre de caja ${cajaId}`);
+      throw error;
+    } finally {
+      await this.liberarQueryRunner(queryRunner);
     }
-
-    caja.estado = CajaEstado.CERRADA;
-    caja.fechaCierre = new Date();
-    caja.usuarioCierreId = user.id;
-    caja.montoCierreEsperado = montoEsperado;
-    caja.montoCierreReal = closeCajaDto.montoCierreReal;
-    caja.diferencia = diferencia;
-    caja.observacionCierre = closeCajaDto.observacion?.trim() || null;
-
-    await this.cajasRepository.save(caja);
-
-    await this.movimientosRepository.save(
-      this.movimientosRepository.create({
-        cajaId: caja.id,
-        tipo: CajaMovimientoTipo.CIERRE,
-        metodoPago: null,
-        numeroVenta: null,
-        detalle: 'Cierre de caja',
-        monto: closeCajaDto.montoCierreReal,
-        usuarioId: user.id,
-      }),
-    );
-
-    return caja;
   }
 
   async pause(cajaId: string, user: ICajaAuthUser): Promise<Caja> {
@@ -199,7 +267,10 @@ export class CajasService {
       throw new NotFoundException('Caja no encontrada');
     }
 
-    if (caja.estado !== CajaEstado.PAUSADA && caja.estado !== CajaEstado.CERRADA) {
+    if (
+      caja.estado !== CajaEstado.PAUSADA &&
+      caja.estado !== CajaEstado.CERRADA
+    ) {
       throw new BadRequestException(
         'Solo se puede reaperturar una caja pausada o cerrada',
       );
@@ -382,9 +453,7 @@ export class CajasService {
       roleSet.add(mapLegacyRoleToRoleCode(user.rol));
     }
 
-    return (
-      roleSet.has(RoleCode.ADMINISTRADOR) || roleSet.has(RoleCode.REGENTE)
-    );
+    return roleSet.has(RoleCode.ADMINISTRADOR) || roleSet.has(RoleCode.REGENTE);
   }
 
   private isAdminUser(user: ICajaAuthUser): boolean {
@@ -416,31 +485,133 @@ export class CajasService {
     }
   }
 
-  private async generateNumeroCaja(): Promise<string> {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const datePrefix = `${year}${month}${day}`;
+  private async iniciarTransaccion(): Promise<{
+    manager: EntityManager;
+    queryRunner: QueryRunner;
+  }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
 
-    const count = await this.cajasRepository
-      .createQueryBuilder('caja')
-      .where('caja.numero_caja LIKE :prefix', { prefix: `CJ-${datePrefix}-%` })
-      .getCount();
+    try {
+      await queryRunner.startTransaction();
+    } catch (error) {
+      await this.liberarQueryRunner(queryRunner);
+      throw error;
+    }
 
-    const sequential = String(count + 1).padStart(4, '0');
-    return `CJ-${datePrefix}-${sequential}`;
+    return { manager: queryRunner.manager, queryRunner };
   }
 
-  private sumMovements(
+  private async commitTransaccion(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.commitTransaction();
+  }
+
+  private async revertirTransaccion(
+    queryRunner: QueryRunner,
+    contexto: string,
+  ): Promise<void> {
+    if (!queryRunner.isTransactionActive) {
+      return;
+    }
+
+    try {
+      await queryRunner.rollbackTransaction();
+    } catch (error) {
+      this.logger.error(
+        `No se pudo revertir la transaccion de ${contexto}: ${this.describirError(error)}`,
+        this.trazaError(error),
+      );
+    }
+  }
+
+  private async liberarQueryRunner(queryRunner: QueryRunner): Promise<void> {
+    try {
+      await queryRunner.release();
+    } catch (error) {
+      this.logger.error(
+        `No se pudo liberar el query runner de cajas: ${this.describirError(error)}`,
+        this.trazaError(error),
+      );
+    }
+  }
+
+  private async calcularEfectivoVentas(
+    cajaId: string,
+    manager: EntityManager,
+  ): Promise<number> {
+    const fila = await manager
+      .createQueryBuilder(VentaPago, 'pago')
+      .innerJoin(Venta, 'venta', 'venta.id = pago.venta_id')
+      .where('pago.metodo_pago = :metodoPago', {
+        metodoPago: VentaMetodoPago.EFECTIVO,
+      })
+      .andWhere('venta.estado = :estado', { estado: VentaEstado.CONFIRMADA })
+      .andWhere('venta.caja_id = :cajaId', { cajaId })
+      .select('COALESCE(SUM(pago.monto), 0)', 'efectivo_total')
+      .getRawOne<{ efectivo_total: string | null }>();
+
+    const total = Number(fila?.efectivo_total ?? 0);
+
+    if (!Number.isFinite(total)) {
+      throw new BadRequestException(
+        'No se pudo determinar el efectivo de las ventas de la caja',
+      );
+    }
+
+    return this.aDosDecimales(total);
+  }
+
+  private async generarNumeroCaja(
+    sucursalId: string,
+    manager: EntityManager,
+  ): Promise<string> {
+    const fechaApertura = new Date();
+    const secuencia = await this.correlativosService.next(
+      CorrelativoTipo.CAJA,
+      sucursalId,
+      { fecha: fechaApertura, manager },
+    );
+
+    return formatearNumeroCorrelativo(
+      `CJ-${this.prefijoFecha(fechaApertura)}`,
+      secuencia,
+    );
+  }
+
+  private prefijoFecha(fecha: Date): string {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${anio}${mes}${dia}`;
+  }
+
+  private aDosDecimales(valor: number): number {
+    if (!Number.isFinite(valor)) {
+      return 0;
+    }
+
+    return Number(valor.toFixed(2));
+  }
+
+  private describirError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private trazaError(error: unknown): string | undefined {
+    return error instanceof Error ? error.stack : undefined;
+  }
+
+  private sumarMovimientos(
     movimientos: CajaMovimiento[],
     ...tipos: CajaMovimientoTipo[]
   ): number {
     const target = new Set(tipos);
 
-    return movimientos
-      .filter((movimiento) => target.has(movimiento.tipo))
-      .reduce((sum, movimiento) => sum + Number(movimiento.monto), 0);
+    return this.aDosDecimales(
+      movimientos
+        .filter((movimiento) => target.has(movimiento.tipo))
+        .reduce((sum, movimiento) => sum + Number(movimiento.monto), 0),
+    );
   }
 
   private isSameDay(left: Date, right: Date): boolean {

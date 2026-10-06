@@ -7,6 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import {
+  construirResultadoPaginacion,
+  normalizarLimite,
+  normalizarPagina,
+  OpcionesPaginacionCatalogo,
+  ResultadoPaginacionCatalogo,
+} from '../../../../common/paginacion/paginacion-catalogos';
 import { Categoria } from '../../domain/entities/categoria.entity';
 import { CreateCategoriaDto } from '../dto/create-categoria.dto';
 import { UpdateCategoriaDto } from '../dto/create-categoria.dto';
@@ -37,21 +44,21 @@ export class CategoriasService implements ICategoriasService {
     return categoriaGuardada;
   }
 
-  async findAll(pagination?: {
-    page: number;
-    limit: number;
-  }): Promise<{ data: Categoria[]; total: number }> {
-    const pagina = pagination?.page ?? 1;
-    const limite = pagination?.limit ?? 10;
+  async findAll(
+    pagination?: OpcionesPaginacionCatalogo,
+  ): Promise<ResultadoPaginacionCatalogo<Categoria>> {
+    const pagina = normalizarPagina(pagination?.page);
+    const limite = normalizarLimite(pagination?.limit);
 
     const [data, total] = await this.categoriaRepository.findAndCount({
       where: { activo: true },
-      skip: (pagina - 1) * limite,
-      take: limite,
+      ...(limite !== undefined
+        ? { skip: (pagina - 1) * limite, take: limite }
+        : {}),
       order: { fechaCreacion: 'DESC' },
     });
 
-    return { data, total };
+    return construirResultadoPaginacion(data, total, pagina, limite);
   }
 
   async findOne(id: string): Promise<Categoria> {

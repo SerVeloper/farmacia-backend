@@ -26,6 +26,13 @@ export class ProductosService implements IProductosService {
       throw new BadRequestException('El nombre del producto es requerido');
     }
 
+    if (typeof createProductoDto.esMedicamento !== 'boolean') {
+      throw new BadRequestException(
+        'esMedicamento es requerido y debe ser boolean (true|false): la ' +
+          'clasificacion no puede omitirse ni asumir false',
+      );
+    }
+
     const codigo = createProductoDto.codigo || this.generarCodigo();
 
     const precioVenta =
@@ -48,6 +55,7 @@ export class ProductosService implements IProductosService {
       stockMinimo: createProductoDto.stockMinimo ?? 0,
       stockMaximo: createProductoDto.stockMaximo ?? 0,
       esControlado: createProductoDto.esControlado ?? false,
+      esMedicamento: createProductoDto.esMedicamento,
       descripcion: createProductoDto.descripcion || undefined,
     };
 

@@ -17,13 +17,24 @@ export class CreateLoteDto {
   @IsNotEmpty()
   productoId: string;
 
-  @ApiProperty({ example: 'LOTE001', description: 'Número de lote' })
+  @ApiProperty({
+    example: 'LOTE001',
+    description:
+      'Numero de lote. Se persiste normalizado (trim + upper) en ' +
+      'numeroLoteNormalizado, que forma parte de la identidad triple junto a ' +
+      'productoId y fechaVencimiento',
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
   numeroLote: string;
 
-  @ApiProperty({ example: '2025-12-31', description: 'Fecha de vencimiento' })
+  @ApiProperty({
+    example: '2025-12-31',
+    description:
+      'Fecha de vencimiento. Se aceptan fechas ya vencidas: el sistema solo ' +
+      'informa (alertas no bloqueantes), no rechaza el registro',
+  })
   @IsDateString()
   fechaVencimiento: string;
 

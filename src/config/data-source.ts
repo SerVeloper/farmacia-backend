@@ -11,6 +11,7 @@ export default new DataSource({
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'farmacia',
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-  migrations: [__dirname + '/../migrations/*{.ts,.js}'],
+  // Los tests junto a migraciones no deben ejecutarse fuera de Jest.
+  migrations: [__dirname + '/../migrations/!(*.spec|*.test){.ts,.js}'],
   synchronize: false,
 });

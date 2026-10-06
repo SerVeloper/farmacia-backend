@@ -8,6 +8,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Lote } from '../../domain/entities/lote.entity';
+import {
+  formatearFechaVencimiento,
+  normalizarNumeroLote,
+} from '../../domain/lote-identidad';
 import { CreateLoteDto } from '../dto/create-lote.dto';
 import { UpdateLoteDto } from '../dto/create-lote.dto';
 import { ILotesService } from '../interfaces/lotes.service.interface';
@@ -22,22 +26,29 @@ export class LotesService implements ILotesService {
   ) {}
 
   async create(createLoteDto: CreateLoteDto): Promise<Lote> {
+    const numeroLoteNormalizado = normalizarNumeroLote(
+      createLoteDto.numeroLote,
+    );
+    const fechaVencimiento = new Date(createLoteDto.fechaVencimiento);
+
     const loteExistente = await this.loteRepository.findOne({
       where: {
         productoId: createLoteDto.productoId,
-        numeroLote: createLoteDto.numeroLote,
+        numeroLoteNormalizado,
+        fechaVencimiento,
       },
     });
 
     if (loteExistente) {
       throw new BadRequestException(
-        'Ya existe un lote con este número para este producto',
+        'Ya existe un lote con este número y fecha de vencimiento para este producto',
       );
     }
 
     const lote = this.loteRepository.create({
       ...createLoteDto,
-      fechaVencimiento: new Date(createLoteDto.fechaVencimiento),
+      numeroLoteNormalizado,
+      fechaVencimiento,
     });
     const loteGuardado = await this.loteRepository.save(lote);
 
@@ -84,28 +95,38 @@ export class LotesService implements ILotesService {
   async update(id: string, updateLoteDto: UpdateLoteDto): Promise<Lote> {
     const lote = await this.findOne(id);
 
-    if (
-      updateLoteDto.numeroLote &&
-      updateLoteDto.numeroLote !== lote.numeroLote
-    ) {
+    const numeroLoteNormalizado =
+      updateLoteDto.numeroLote !== undefined
+        ? normalizarNumeroLote(updateLoteDto.numeroLote)
+        : lote.numeroLoteNormalizado;
+    const fechaVencimiento = updateLoteDto.fechaVencimiento
+      ? new Date(updateLoteDto.fechaVencimiento)
+      : lote.fechaVencimiento;
+
+    const cambiaIdentidad =
+      numeroLoteNormalizado !== lote.numeroLoteNormalizado ||
+      formatearFechaVencimiento(fechaVencimiento) !==
+        formatearFechaVencimiento(lote.fechaVencimiento);
+
+    if (cambiaIdentidad) {
       const loteExistente = await this.loteRepository.findOne({
         where: {
           productoId: lote.productoId,
-          numeroLote: updateLoteDto.numeroLote,
+          numeroLoteNormalizado,
+          fechaVencimiento,
         },
       });
-      if (loteExistente) {
+      if (loteExistente && loteExistente.id !== lote.id) {
         throw new BadRequestException(
-          'Ya existe un lote con este número para este producto',
+          'Ya existe un lote con este número y fecha de vencimiento para este producto',
         );
       }
     }
 
     Object.assign(lote, updateLoteDto);
 
-    if (updateLoteDto.fechaVencimiento) {
-      lote.fechaVencimiento = new Date(updateLoteDto.fechaVencimiento);
-    }
+    lote.numeroLoteNormalizado = numeroLoteNormalizado;
+    lote.fechaVencimiento = fechaVencimiento;
 
     return this.loteRepository.save(lote);
   }

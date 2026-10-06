@@ -24,13 +24,11 @@ import { LoginDto } from '../../application/dto/login.dto';
 import { RefreshTokenDto } from '../../application/dto/refresh-token.dto';
 import { ResetPasswordDto } from '../../application/dto/reset-password.dto';
 import { AuthService } from '../../application/services/auth.service';
+import { IAuthUser } from '../../application/interfaces/jwt-payload.interface';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 interface IRequestWithUser {
-  user?: {
-    id: string;
-    sucursalActivaId?: string | null;
-  };
+  user?: IAuthUser;
 }
 
 @ApiTags('auth')
@@ -79,10 +77,14 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const refreshToken = this.extractRefreshToken(req, refreshDto.refreshToken);
-    const authResponse = await this.authService.refresh(refreshToken, {
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
+    const authResponse = await this.authService.refresh(
+      refreshToken,
+      {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+      refreshDto.sucursalActivaId,
+    );
 
     this.setRefreshTokenCookie(
       response,
@@ -95,6 +97,7 @@ export class AuthController {
       tokenType: authResponse.tokenType,
       expiresIn: authResponse.expiresIn,
       sessionExpiresIn: authResponse.sessionExpiresIn,
+      sucursalActivaId: authResponse.sucursalActivaId,
     };
   }
 
@@ -168,6 +171,20 @@ export class AuthController {
   @ApiOperation({ summary: 'Listar sucursales habilitadas para seleccion en login' })
   branches() {
     return this.authService.getLoginSucursales();
+  }
+
+  @Get('available-branches')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Listar sucursales disponibles para el usuario autenticado' })
+  availableBranches(@Req() req: IRequestWithUser) {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+
+    return this.authService.getAvailableSucursales(userId);
   }
 
   private extractRefreshToken(

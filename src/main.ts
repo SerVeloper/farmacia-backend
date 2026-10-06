@@ -43,6 +43,8 @@ async function bootstrap() {
     .addTag('inventory', 'Inventario')
     .addTag('cajas', 'Cajas')
     .addTag('sales', 'Ventas')
+    .addTag('compras', 'Compras')
+    .addTag('unidades-medida', 'Unidades de medida')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

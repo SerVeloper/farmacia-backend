@@ -51,23 +51,21 @@ export class CategoriasController {
     name: 'pagina',
     required: false,
     type: Number,
-    description: 'Número de página',
+    description: 'Número de página (default: 1). Se ignora si se omite limite',
   })
   @ApiQuery({
     name: 'limite',
     required: false,
     type: Number,
-    description: 'Registros por página',
+    description:
+      'Registros por página. Si se omite, retorna el listado completo',
   })
   @ApiResponse({ status: 200, description: 'Lista de categorías' })
   async findAll(
     @Query('pagina') pagina?: number,
     @Query('limite') limite?: number,
   ) {
-    return this.categoriasService.findAll({
-      page: pagina || 1,
-      limit: limite || 10,
-    });
+    return this.categoriasService.findAll({ page: pagina, limit: limite });
   }
 
   @Get(':id')

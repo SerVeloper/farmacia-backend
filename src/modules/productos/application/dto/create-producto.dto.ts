@@ -91,6 +91,17 @@ export class CreateProductoDto {
   @IsBoolean()
   esControlado?: boolean;
 
+  @ApiProperty({
+    example: false,
+    description:
+      'Clasificacion explicita de medicamento (decision humana obligatoria). ' +
+      'true habilita lote/vencimiento obligatorio en compras y FEFO en ventas; ' +
+      'false mantiene el flujo sin lote. No se admite ausencia: no existe ' +
+      'default implicito en el alta',
+  })
+  @IsBoolean()
+  esMedicamento: boolean;
+
   @ApiPropertyOptional({
     example: 'Analgésico y antipirético',
     description: 'Descripción',
@@ -170,6 +181,16 @@ export class UpdateProductoDto {
   @IsOptional()
   @IsBoolean()
   esControlado?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Reclasificacion explicita a medicamento. Si se omite no se modifica ' +
+      'la clasificacion existente',
+  })
+  @IsOptional()
+  @IsBoolean()
+  esMedicamento?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()

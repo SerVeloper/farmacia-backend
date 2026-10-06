@@ -7,6 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import {
+  construirResultadoPaginacion,
+  normalizarLimite,
+  normalizarPagina,
+  OpcionesPaginacionCatalogo,
+  ResultadoPaginacionCatalogo,
+} from '../../../../common/paginacion/paginacion-catalogos';
 import { Marca } from '../../domain/entities/marca.entity';
 import { CreateMarcaDto } from '../dto/create-marca.dto';
 import { UpdateMarcaDto } from '../dto/create-marca.dto';
@@ -42,21 +49,21 @@ export class MarcasService implements IMarcasService {
     return marcaGuardada;
   }
 
-  async findAll(pagination?: {
-    page: number;
-    limit: number;
-  }): Promise<{ data: Marca[]; total: number }> {
-    const pagina = pagination?.page ?? 1;
-    const limite = pagination?.limit ?? 10;
+  async findAll(
+    pagination?: OpcionesPaginacionCatalogo,
+  ): Promise<ResultadoPaginacionCatalogo<Marca>> {
+    const pagina = normalizarPagina(pagination?.page);
+    const limite = normalizarLimite(pagination?.limit);
 
     const [data, total] = await this.marcaRepository.findAndCount({
       where: { activo: true },
-      skip: (pagina - 1) * limite,
-      take: limite,
+      ...(limite !== undefined
+        ? { skip: (pagina - 1) * limite, take: limite }
+        : {}),
       order: { fechaCreacion: 'DESC' },
     });
 
-    return { data, total };
+    return construirResultadoPaginacion(data, total, pagina, limite);
   }
 
   async findOne(id: string): Promise<Marca> {

@@ -1,13 +1,16 @@
+import {
+  OpcionesPaginacionCatalogo,
+  ResultadoPaginacionCatalogo,
+} from '../../../../common/paginacion/paginacion-catalogos';
 import { Categoria } from '../../domain/entities/categoria.entity';
 import { CreateCategoriaDto } from '../dto/create-categoria.dto';
 import { UpdateCategoriaDto } from '../dto/create-categoria.dto';
 
 export interface ICategoriasService {
   create(createCategoriaDto: CreateCategoriaDto): Promise<Categoria>;
-  findAll(pagination?: {
-    page: number;
-    limit: number;
-  }): Promise<{ data: Categoria[]; total: number }>;
+  findAll(
+    pagination?: OpcionesPaginacionCatalogo,
+  ): Promise<ResultadoPaginacionCatalogo<Categoria>>;
   findOne(id: string): Promise<Categoria>;
   update(
     id: string,

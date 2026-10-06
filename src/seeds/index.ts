@@ -4,6 +4,7 @@ import { config } from 'dotenv';
 
 import { CategoriasSeeder } from './categorias.seed';
 import { MarcasSeeder } from './marcas.seed';
+import { UnidadesMedidaSeeder } from './unidades-medida.seed';
 import { RolesSeeder } from './roles.seed';
 import { UsersSeeder } from './users.seed';
 
@@ -33,6 +34,11 @@ async function runSeeders() {
 
     const marcasSeeder = new MarcasSeeder(dataSource);
     await marcasSeeder.run();
+
+    console.log('');
+
+    const unidadesSeeder = new UnidadesMedidaSeeder(dataSource);
+    await unidadesSeeder.run();
 
     console.log('');
 

@@ -47,17 +47,25 @@ export class MarcasController {
 
   @Get()
   @ApiOperation({ summary: 'Obtener todas las marcas' })
-  @ApiQuery({ name: 'pagina', required: false, type: Number })
-  @ApiQuery({ name: 'limite', required: false, type: Number })
+  @ApiQuery({
+    name: 'pagina',
+    required: false,
+    type: Number,
+    description: 'Número de página (default: 1). Se ignora si se omite limite',
+  })
+  @ApiQuery({
+    name: 'limite',
+    required: false,
+    type: Number,
+    description:
+      'Registros por página. Si se omite, retorna el listado completo',
+  })
   @ApiResponse({ status: 200, description: 'Lista de marcas' })
   async findAll(
     @Query('pagina') pagina?: number,
     @Query('limite') limite?: number,
   ) {
-    return this.marcasService.findAll({
-      page: pagina || 1,
-      limit: limite || 10,
-    });
+    return this.marcasService.findAll({ page: pagina, limit: limite });
   }
 
   @Get(':id')

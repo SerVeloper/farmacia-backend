@@ -12,6 +12,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { SucursalesModule } from './modules/sucursales/sucursales.module';
 import { CajasModule } from './modules/cajas/cajas.module';
 import { VentasModule } from './modules/ventas/ventas.module';
+import { ComprasModule } from './modules/compras/compras.module';
+import { UnidadesMedidaModule } from './modules/unidades-medida/unidades-medida.module';
+import { CorrelativosModule } from './common/correlativos/correlativos.module';
 
 @Module({
   imports: [
@@ -30,13 +33,23 @@ import { VentasModule } from './modules/ventas/ventas.module';
         REMEMBER_ME_TTL: Joi.string().default('15d'),
         REFRESH_TOKEN_SECRET: Joi.string().required(),
         RESET_TOKEN_TTL_MINUTES: Joi.number().default(30),
-        AUTH_REFRESH_COOKIE_NAME: Joi.string().default('farmacia_refresh_token'),
+        AUTH_REFRESH_COOKIE_NAME: Joi.string().default(
+          'farmacia_refresh_token',
+        ),
         AUTH_COOKIE_SECURE: Joi.boolean().default(false),
-        AUTH_COOKIE_SAMESITE: Joi.string().valid('lax', 'strict', 'none').default('lax'),
+        AUTH_COOKIE_SAMESITE: Joi.string()
+          .valid('lax', 'strict', 'none')
+          .default('lax'),
         DEFAULT_ADMIN_EMAIL: Joi.string()
           .email()
           .default('admin@farmacia.local'),
         DEFAULT_ADMIN_PASSWORD: Joi.string().min(6).default('admin1234'),
+        // R9: umbral (dias) de la alerta informativa de proximo vencimiento.
+        // Lo consume ExpiryAlertsService via ConfigService; la UI nunca lo recalcula.
+        LOTES_ALERTA_PROXIMO_VENCIMIENTO_DIAS: Joi.number()
+          .integer()
+          .min(0)
+          .default(90),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -69,6 +82,9 @@ import { VentasModule } from './modules/ventas/ventas.module';
     SucursalesModule,
     CajasModule,
     VentasModule,
+    ComprasModule,
+    UnidadesMedidaModule,
+    CorrelativosModule,
   ],
 })
 export class AppModule {}
