@@ -10,36 +10,20 @@ const base = {
   categoriaId: 'd7e30dfa-cc70-4f2c-8aa6-8f2b9576f620',
 };
 
-describe('QuickCreateProductoCompraDto - R1 clasificacion esMedicamento', () => {
-  it('debe exigir esMedicamento en el quick-create (400 cuando se omite)', () => {
-    const errores = validateSync(
-      plainToInstance(QuickCreateProductoCompraDto, base),
-      { whitelist: true, forbidNonWhitelisted: true },
-    );
+function validar(payload: Record<string, unknown>) {
+  return validateSync(plainToInstance(QuickCreateProductoCompraDto, payload), {
+    whitelist: true,
+    forbidNonWhitelisted: true,
+  });
+}
 
-    expect(errores.map((e) => e.property)).toContain('esMedicamento');
+describe('QuickCreateProductoCompraDto - quick-create sin esMedicamento (campo eliminado)', () => {
+  it('debe aceptar el quick-create sin esMedicamento', () => {
+    expect(validar(base)).toHaveLength(0);
   });
 
-  it('debe aceptar esMedicamento=true explicito', () => {
-    const errores = validateSync(
-      plainToInstance(QuickCreateProductoCompraDto, {
-        ...base,
-        esMedicamento: true,
-      }),
-      { whitelist: true, forbidNonWhitelisted: true },
-    );
-
-    expect(errores).toHaveLength(0);
-  });
-
-  it('debe rechazar esMedicamento no booleano', () => {
-    const errores = validateSync(
-      plainToInstance(QuickCreateProductoCompraDto, {
-        ...base,
-        esMedicamento: 1,
-      }),
-      { whitelist: true, forbidNonWhitelisted: true },
-    );
+  it('debe rechazar esMedicamento como propiedad no permitida', () => {
+    const errores = validar({ ...base, esMedicamento: true });
 
     expect(errores.map((e) => e.property)).toContain('esMedicamento');
   });

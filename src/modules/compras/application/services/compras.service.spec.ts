@@ -73,12 +73,11 @@ function entidadNombre(target: unknown): string {
   return 'desconocida';
 }
 
-function productoFixture(id: string, esMedicamento: boolean): Producto {
+function productoFixture(id: string): Producto {
   return {
     id,
     nombre: `Producto ${id.slice(0, 2)}`,
     codigo: `PRD-${id.slice(0, 6)}`,
-    esMedicamento,
     activo: true,
   } as Producto;
 }
@@ -171,9 +170,9 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
     itemsGuardados = [];
     comprasGuardadas = [];
     productosPorId = new Map<string, Producto>([
-      [PRODUCTO_A, productoFixture(PRODUCTO_A, true)],
-      [PRODUCTO_B, productoFixture(PRODUCTO_B, true)],
-      [PRODUCTO_C, productoFixture(PRODUCTO_C, false)],
+      [PRODUCTO_A, productoFixture(PRODUCTO_A)],
+      [PRODUCTO_B, productoFixture(PRODUCTO_B)],
+      [PRODUCTO_C, productoFixture(PRODUCTO_C)],
     ]);
     inventariosPorProducto = new Map<string, InventarioSucursal | null>();
 
@@ -473,16 +472,25 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
     expect(guardadosInventario()[0].stockActual).toBe(125);
   });
 
-  it('R4.4 no medicamento sin lote: solo incrementa el agregado, sin saldo por lote', async () => {
-    const dto = dtoBase([itemBase({ productoId: PRODUCTO_C })]);
+  it('R4.1 cualquier producto sin numero de lote se rechaza sin mutar el stock', async () => {
+    const dto = dtoBase([
+      itemBase({
+        productoId: PRODUCTO_C,
+        fechaVencimiento: '2027-01-31',
+      }),
+    ]);
 
-    await service.create(dto, USUARIO);
+    await expect(service.create(dto, USUARIO)).rejects.toThrow(
+      BadRequestException,
+    );
 
     expect(lotStockService.creditPurchase).not.toHaveBeenCalled();
-    expect(guardadosInventario()[0].stockActual).toBe(125);
+    expect(guardadosInventario()).toHaveLength(0);
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
   });
 
-  it('R4.4 no medicamento con lote declarado no genera saldo por lote (sin dimension de lote)', async () => {
+  it('R4.4 acredita el lote de cualquier producto con lote y vencimiento declarados', async () => {
     const dto = dtoBase([
       itemBase({
         productoId: PRODUCTO_C,
@@ -493,7 +501,15 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
 
     await service.create(dto, USUARIO);
 
-    expect(lotStockService.creditPurchase).not.toHaveBeenCalled();
+    expect(lotStockService.creditPurchase).toHaveBeenCalledTimes(1);
+    const [, entrada] = lotStockService.creditPurchase.mock.calls[0];
+    expect(entrada).toEqual({
+      sucursalId: SUCURSAL_ID,
+      productoId: PRODUCTO_C,
+      numeroLote: 'LOTE-NOMED-1',
+      fechaVencimiento: '2027-01-31',
+      cantidad: 120,
+    });
     expect(itemsGuardados).toHaveLength(1);
     expect(itemsGuardados[0].lote).toBe('LOTE-NOMED-1');
   });
@@ -502,6 +518,7 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
     const dto = dtoBase([
       itemBase({
         productoId: PRODUCTO_C,
+        lote: 'LOTE-C',
         fechaVencimiento: '2027-01-31',
       }),
       itemBase({
@@ -593,7 +610,11 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
 
   it('debe conservar el orden del usuario en los CompraItem aunque los locks sean ordenados', async () => {
     const dto = dtoBase([
-      itemBase({ productoId: PRODUCTO_C, fechaVencimiento: '2027-01-31' }),
+      itemBase({
+        productoId: PRODUCTO_C,
+        lote: 'LOTE-C',
+        fechaVencimiento: '2027-01-31',
+      }),
       itemBase({
         productoId: PRODUCTO_B,
         lote: 'LOTE-B',
@@ -681,7 +702,7 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
     expect(opciones.fecha.getDate()).toBe(5);
   });
 
-  it('debe preservar el quick-create de producto con esMedicamento requerido', async () => {
+  it('debe crear el producto rapido sin esMedicamento y acreditar su lote', async () => {
     const dto = dtoBase([
       itemBase({
         lote: 'LOTE-NUEVO',
@@ -691,7 +712,6 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
           principioActivo: 'Amoxicilina',
           marcaId: 'marca-1',
           categoriaId: 'categoria-1',
-          esMedicamento: true,
         } as never,
       }),
     ]);
@@ -702,9 +722,9 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
       ([target]) => entidadNombre(target) === 'productos',
     );
     expect(quickCreate).toBeDefined();
-    expect((quickCreate![1] as Record<string, unknown>).esMedicamento).toBe(
-      true,
-    );
+    expect(
+      Object.keys(quickCreate![1] as Record<string, unknown>),
+    ).not.toContain('esMedicamento');
     expect(lotStockService.creditPurchase).toHaveBeenCalledTimes(1);
     expect(lotStockService.creditPurchase.mock.calls[0][1]).toMatchObject({
       productoId: PRODUCTO_NUEVO_ID,
@@ -713,7 +733,7 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
     });
   });
 
-  it('debe rechazar quick-create sin esMedicamento explicito antes de tocar stock', async () => {
+  it('debe rechazar el quick-create sin lote ni vencimiento antes de tocar stock', async () => {
     const dto = dtoBase([
       itemBase({
         productoNuevo: {
@@ -726,7 +746,7 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
     ]);
 
     await expect(service.create(dto, USUARIO)).rejects.toThrow(
-      /esMedicamento es requerido/,
+      BadRequestException,
     );
     expect(lotStockService.creditPurchase).not.toHaveBeenCalled();
     expect(guardadosInventario()).toHaveLength(0);
@@ -741,7 +761,6 @@ describe('ComprasService.create — nucleo de lotes por sucursal (R3/R4/R13)', (
           principioActivo: 'Amoxicilina',
           marcaId: 'marca-1',
           categoriaId: 'categoria-1',
-          esMedicamento: true,
         } as never,
       }),
     ]);
@@ -918,7 +937,6 @@ describe('ComprasService + ExpiryAlertsService (R9 alertas informativas)', () =>
           precioCompra: '10',
           precioVenta: '13',
           stockActual: '5',
-          esMedicamento: true,
         },
         {
           productoId: PRODUCTO_B,
@@ -927,7 +945,6 @@ describe('ComprasService + ExpiryAlertsService (R9 alertas informativas)', () =>
           precioCompra: '20',
           precioVenta: '26',
           stockActual: '7',
-          esMedicamento: true,
         },
       ];
     });
@@ -936,8 +953,11 @@ describe('ComprasService + ExpiryAlertsService (R9 alertas informativas)', () =>
       const filas = await service.getCatalogo({} as never, USUARIO as never);
 
       expect(expiryAlertsService.getForProducts).toHaveBeenCalledTimes(1);
-      const llamada = expiryAlertsService.getForProducts.mock
-        .calls[0] as [unknown, string, string[]];
+      const llamada = expiryAlertsService.getForProducts.mock.calls[0] as [
+        unknown,
+        string,
+        string[],
+      ];
       const [managerArg, sucursalArg, idsArg] = llamada;
       expect(managerArg).toBe(managerBatch);
       expect(sucursalArg).toBe(SUCURSAL_ID);
@@ -969,8 +989,8 @@ describe('ComprasService + ExpiryAlertsService (R9 alertas informativas)', () =>
         precioCompra: 10,
         precioVenta: 13,
         stockActual: 5,
-        esMedicamento: true,
       });
+      expect(primero).not.toHaveProperty('esMedicamento');
       expect(primero.alertasVencimiento).toEqual([alertaProxima()]);
       expect(primero.resumenVencimientos).toEqual({
         diasAlerta: 90,
@@ -1098,15 +1118,31 @@ describe('ComprasService + ExpiryAlertsService (R9 alertas informativas)', () =>
       expect(detalle.items[0].subtotal).toBe(300);
       expect(detalle.items[0].precioVenta).toBe(13);
       expect(detalle.items[0]).toMatchObject({
-        alertas: [expect.objectContaining({ tipo: 'vencido', numeroLote: 'LOTE-VIEJO', mensaje: expect.any(String) })],
+        alertas: [
+          expect.objectContaining({
+            tipo: 'vencido',
+            numeroLote: 'LOTE-VIEJO',
+            mensaje: expect.any(String),
+          }),
+        ],
       });
       expect(detalle).toMatchObject({
-        alertasVencimiento: [expect.objectContaining({ tipo: 'vencido', numeroLote: 'LOTE-VIEJO' })],
-        resumenVencimientos: { diasAlerta: 90, totalAlertas: 1, vencidos: 1, proximos: 0 },
+        alertasVencimiento: [
+          expect.objectContaining({
+            tipo: 'vencido',
+            numeroLote: 'LOTE-VIEJO',
+          }),
+        ],
+        resumenVencimientos: {
+          diasAlerta: 90,
+          totalAlertas: 1,
+          vencidos: 1,
+          proximos: 0,
+        },
       });
     });
 
-    it('deja alertaVencimiento null en items sin lote (no medicamento)', async () => {
+    it('deja alertaVencimiento null en items sin lote ni vencimiento', async () => {
       itemsCompra = [
         {
           id: 'item-1',
@@ -1129,17 +1165,28 @@ describe('ComprasService + ExpiryAlertsService (R9 alertas informativas)', () =>
       expiryAlertsService.diasAlerta.mockReturnValue(10);
       const fecha = new Date();
       fecha.setUTCDate(fecha.getUTCDate() + 30);
-      itemsCompra = [{
-        id: 'item-config', productoId: PRODUCTO_A, lote: 'FUERA-UMBRAL',
-        fechaVencimiento: fecha, cantidadUnidadesIngreso: 1,
-      } as unknown as CompraItem];
+      itemsCompra = [
+        {
+          id: 'item-config',
+          productoId: PRODUCTO_A,
+          lote: 'FUERA-UMBRAL',
+          fechaVencimiento: fecha,
+          cantidadUnidadesIngreso: 1,
+        } as unknown as CompraItem,
+      ];
       const detalle = await service.findOne(COMPRA_ID, USUARIO as never);
       expect(detalle.items[0]).toMatchObject({
-        alertaVencimiento: { proximoVencimiento: false }, alertas: [],
+        alertaVencimiento: { proximoVencimiento: false },
+        alertas: [],
       });
       expect(detalle).toMatchObject({
         alertasVencimiento: [],
-        resumenVencimientos: { diasAlerta: 10, totalAlertas: 0, vencidos: 0, proximos: 0 },
+        resumenVencimientos: {
+          diasAlerta: 10,
+          totalAlertas: 0,
+          vencidos: 0,
+          proximos: 0,
+        },
       });
     });
 

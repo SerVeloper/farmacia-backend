@@ -180,7 +180,6 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
           nombre: 'Amoxicilina 500mg',
           codigo: 'PRD-A',
           precioVenta: 10,
-          esMedicamento: true,
           activo: true,
         },
       ],
@@ -191,7 +190,6 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
           nombre: 'Ibuprofeno 400mg',
           codigo: 'PRD-B',
           precioVenta: 5,
-          esMedicamento: true,
           activo: true,
         },
       ],
@@ -202,7 +200,6 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
           nombre: 'Jabon antibacterial',
           codigo: 'PRD-C',
           precioVenta: 8,
-          esMedicamento: false,
           activo: true,
         },
       ],
@@ -741,8 +738,16 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
     });
   });
 
-  describe('productos no medicamento', () => {
-    it('no delega al asignador y descuenta solo el agregado', async () => {
+  describe('productos sin clasificacion (esMedicamento eliminado)', () => {
+    it('delega al asignador FEFO tambien los productos sin clasificacion', async () => {
+      lotStockService.allocateSale.mockResolvedValue([
+        {
+          loteId: LOTE_PROXIMO,
+          cantidad: 2,
+          fechaVencimiento: FECHA_VENCIMIENTO_PROXIMA,
+        },
+      ]);
+
       await service.create(
         dtoBase(
           [{ productoId: PRODUCTO_NO_MED, cantidad: 2 }],
@@ -751,19 +756,34 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
         USUARIO,
       );
 
-      expect(lotStockService.allocateSale).not.toHaveBeenCalled();
-      expect(ventaItemLotesGuardados).toEqual([]);
+      expect(lotStockService.allocateSale).toHaveBeenCalledTimes(1);
+      expect(lotStockService.allocateSale.mock.calls[0][1]).toEqual({
+        sucursalId: SUCURSAL_ID,
+        productoId: PRODUCTO_NO_MED,
+        cantidad: 2,
+      });
+      expect(ventaItemLotesGuardados).toEqual([
+        { ventaItemId: ITEM_A_ID, loteId: LOTE_PROXIMO, cantidad: 2 },
+      ]);
       expect(guardarInventario(PRODUCTO_NO_MED).stockActual).toBe(7);
     });
 
-    it('no escribe venta_item_lotes aunque la venta combine medicamento y no medicamento', async () => {
-      lotStockService.allocateSale.mockResolvedValue([
-        {
-          loteId: LOTE_PROXIMO,
-          cantidad: 1,
-          fechaVencimiento: FECHA_VENCIMIENTO_PROXIMA,
-        },
-      ]);
+    it('escribe venta_item_lotes para todos los productos de una venta mixta', async () => {
+      lotStockService.allocateSale.mockImplementation(
+        async (
+          _em: unknown,
+          entrada: { productoId: string; cantidad: number },
+        ) => [
+          {
+            loteId:
+              entrada.productoId === PRODUCTO_MED_A
+                ? LOTE_PROXIMO
+                : LOTE_VENCIDO,
+            cantidad: entrada.cantidad,
+            fechaVencimiento: FECHA_VENCIMIENTO_PROXIMA,
+          },
+        ],
+      );
 
       await service.create(
         dtoBase(
@@ -776,13 +796,15 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
         USUARIO,
       );
 
-      expect(lotStockService.allocateSale).toHaveBeenCalledTimes(1);
-      expect(lotStockService.allocateSale.mock.calls[0][1]).toEqual({
-        sucursalId: SUCURSAL_ID,
-        productoId: PRODUCTO_MED_A,
-        cantidad: 1,
-      });
+      expect(lotStockService.allocateSale).toHaveBeenCalledTimes(2);
+      expect(
+        lotStockService.allocateSale.mock.calls.map(([, entrada]) => entrada),
+      ).toEqual([
+        { sucursalId: SUCURSAL_ID, productoId: PRODUCTO_MED_A, cantidad: 1 },
+        { sucursalId: SUCURSAL_ID, productoId: PRODUCTO_NO_MED, cantidad: 1 },
+      ]);
       expect(ventaItemLotesGuardados).toEqual([
+        { ventaItemId: ITEM_A_ID, loteId: LOTE_VENCIDO, cantidad: 1 },
         { ventaItemId: ITEM_B_ID, loteId: LOTE_PROXIMO, cantidad: 1 },
       ]);
       expect(guardarInventario(PRODUCTO_NO_MED).stockActual).toBe(8);
@@ -956,7 +978,7 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
       );
 
       expect(ordenDeAsignaciones()).toEqual(
-        [PRODUCTO_MED_A, PRODUCTO_MED_B].map(
+        [PRODUCTO_MED_A, PRODUCTO_MED_B, PRODUCTO_NO_MED].map(
           (productoId) => `allocate:${productoId}`,
         ),
       );
@@ -1038,7 +1060,10 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
       expect(
         asignacionesPorItem.get(itemIdPorProducto.get(PRODUCTO_MED_B)),
       ).toBe(LOTE_VENCIDO);
-      expect(asignacionesPorItem.size).toBe(2);
+      expect(asignacionesPorItem.size).toBe(3);
+      expect(
+        asignacionesPorItem.get(itemIdPorProducto.get(PRODUCTO_NO_MED)),
+      ).toBe(LOTE_VENCIDO);
       expect(
         ventaItemLotesGuardados.some(
           (lote) =>
@@ -1345,7 +1370,7 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
       expect(asignaciones[0].fechaVencimiento).toBe('2030-01-10');
     });
 
-    it('devuelve asignaciones vacias para items no medicamentos', async () => {
+    it('devuelve asignaciones vacias para items sin filas de venta_item_lotes', async () => {
       ventaItemsLectura = [
         {
           id: ITEM_B_ID,
@@ -1387,7 +1412,7 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
       expect(movimiento.cajaId).toBe(CAJA_ID);
     });
 
-    it('mantiene el campo esMedicamento en el catalogo de venta', async () => {
+    it('no expone esMedicamento en el catalogo de venta', async () => {
       const inventarioRepository = {
         createQueryBuilder: jest.fn(() => ({
           innerJoin: jest.fn().mockReturnThis(),
@@ -1404,7 +1429,6 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
               nombre: 'Amoxicilina 500mg',
               precioVenta: '10.00',
               stockActual: '50',
-              esMedicamento: true,
             },
           ]),
         })),
@@ -1414,6 +1438,7 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
 
       const catalogo = await service.getCatalogo({} as any, USUARIO);
 
+      expect(catalogo[0]).not.toHaveProperty('esMedicamento');
       expect(catalogo).toEqual([
         {
           inventarioId: 'inv-1',
@@ -1422,7 +1447,6 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
           nombre: 'Amoxicilina 500mg',
           precioVenta: 10,
           stockActual: 50,
-          esMedicamento: true,
           // R9: el catalogo enrichece con alertas canonicas; sin nada que
           // avisar la fila se conserva con arrays vacios.
           alertasVencimiento: [],
@@ -1805,7 +1829,6 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
               nombre: 'Amoxicilina 500mg',
               precioVenta: '10.00',
               stockActual: '50',
-              esMedicamento: true,
             },
             {
               inventarioId: 'inv-b',
@@ -1814,7 +1837,6 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
               nombre: 'Ibuprofeno 400mg',
               precioVenta: '5.00',
               stockActual: '20',
-              esMedicamento: true,
             },
             {
               inventarioId: 'inv-c',
@@ -1823,7 +1845,6 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
               nombre: 'Jabon antibacterial',
               precioVenta: '8.00',
               stockActual: '9',
-              esMedicamento: false,
             },
           ]),
         })),

@@ -59,9 +59,6 @@ export class Producto {
   @Column({ name: 'es_controlado', type: 'boolean', default: false })
   esControlado: boolean;
 
-  @Column({ name: 'es_medicamento', type: 'boolean', default: false })
-  esMedicamento: boolean;
-
   @Column({ type: 'text', nullable: true })
   descripcion: string;
 

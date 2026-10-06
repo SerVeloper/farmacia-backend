@@ -98,8 +98,6 @@ interface CompraCatalogoRow {
   precioventa?: string;
   stockActual?: string;
   stockactual?: string;
-  esMedicamento?: boolean;
-  esmedicamento?: boolean | string;
 }
 
 interface CompraPreparadoItem {
@@ -347,7 +345,9 @@ export class ComprasService {
         diasAlerta,
         totalAlertas: alertasVencimiento.length,
         vencidos: alertasVencimiento.filter((alerta) => alerta.vencido).length,
-        proximos: alertasVencimiento.filter((alerta) => alerta.proximoVencimiento).length,
+        proximos: alertasVencimiento.filter(
+          (alerta) => alerta.proximoVencimiento,
+        ).length,
       },
       pagos: pagos.map((pago) => ({
         ...pago,
@@ -394,7 +394,10 @@ export class ComprasService {
     });
 
     const evaluadas = asignables.length
-      ? mapAsignacionesConAlertas(asignables.map((a) => a.asignacion), { diasAlerta })
+      ? mapAsignacionesConAlertas(
+          asignables.map((a) => a.asignacion),
+          { diasAlerta },
+        )
       : [];
 
     const alertaPorIndice = new Map<
@@ -419,16 +422,19 @@ export class ComprasService {
 
     return items.map((item, indice) => {
       const alerta = alertaPorIndice.get(indice) ?? null;
-      const alertas = alerta && (alerta.vencido || alerta.proximoVencimiento)
-        ? [{
-            ...alerta,
-            productoId: item.productoId,
-            nombreProducto: item.nombreProducto,
-            mensaje: alerta.vencido
-              ? `El lote ${alerta.numeroLote} esta vencido desde hace ${alerta.diasVencido} dias`
-              : `El lote ${alerta.numeroLote} vence en ${alerta.diasParaVencer} dias`,
-          }]
-        : [];
+      const alertas =
+        alerta && (alerta.vencido || alerta.proximoVencimiento)
+          ? [
+              {
+                ...alerta,
+                productoId: item.productoId,
+                nombreProducto: item.nombreProducto,
+                mensaje: alerta.vencido
+                  ? `El lote ${alerta.numeroLote} esta vencido desde hace ${alerta.diasVencido} dias`
+                  : `El lote ${alerta.numeroLote} vence en ${alerta.diasParaVencer} dias`,
+              },
+            ]
+          : [];
       return {
         ...item,
         costoCompraUnitario: Number(item.costoCompraUnitario),
@@ -477,7 +483,6 @@ export class ComprasService {
         'producto.precio_compra AS precioCompra',
         'producto.precio_venta AS precioVenta',
         'COALESCE(inventario.stock_actual, 0) AS stockActual',
-        'COALESCE(producto.es_medicamento, false) AS esMedicamento',
       ])
       .orderBy('producto.nombre', 'ASC')
       .limit(60)
@@ -491,7 +496,6 @@ export class ComprasService {
       precioCompra: Number(row.precioCompra ?? row.preciocompra ?? 0),
       precioVenta: Number(row.precioVenta ?? row.precioventa ?? 0),
       stockActual: Number(row.stockActual ?? row.stockactual ?? 0),
-      esMedicamento: this.toEsMedicamento(row),
     }));
 
     return this.enriquecerCatalogoConAlertas(catalogo, sucursalId);
@@ -545,16 +549,6 @@ export class ComprasService {
         resumenVencimientos: entry?.resumen ?? null,
       };
     });
-  }
-
-  private toEsMedicamento(row: CompraCatalogoRow): boolean {
-    const value = row.esMedicamento ?? row.esmedicamento;
-
-    if (typeof value === 'boolean') {
-      return value;
-    }
-
-    return value === 'true';
   }
 
   async createProveedor(dto: CreateProveedorDto) {
@@ -749,7 +743,7 @@ export class ComprasService {
 
   /**
    * Fase 1: resolucion y validacion en el orden del usuario. NO muta stock:
-   * R4 exige lote + vencimiento de medicamento antes de cualquier movimiento.
+   * R4 exige lote + vencimiento de todo producto antes de cualquier movimiento.
    */
   private async prepararItems(
     inputItems: CreateCompraItemDto[],
@@ -788,9 +782,9 @@ export class ComprasService {
         ? new Date(`${fechaVencimientoColumna}T00:00:00.000Z`)
         : null;
 
-      if (producto.esMedicamento && (!lote || !fechaVencimientoColumna)) {
+      if (!lote || !fechaVencimientoColumna) {
         throw new BadRequestException(
-          `El medicamento ${producto.nombre} requiere numero de lote y fecha de vencimiento`,
+          `El producto ${producto.nombre} requiere numero de lote y fecha de vencimiento`,
         );
       }
 
@@ -837,11 +831,9 @@ export class ComprasService {
    * `(producto, numero normalizado, vencimiento)` en orden determinista.
    * El agregado `inventario_sucursal.stock_actual` es del llamador.
    *
-   * Decision R4.4: solo los medicamentos tienen dimension de lote. Un item no
-   * medicamento no genera saldo por lote aunque declare lote y vencimiento:
-   * asi no queda un saldo huerfano que ninguna venta podria consumir (el
-   * non-med mantiene su ledger de cantidad unica). `lote`/`fechaVencimiento`
-   * se conservan en `compra_items` como dato de auditoria.
+   * Todo producto tiene dimension de lote al comprar: el saldo por lote es la
+   * unica fuente de stock que las ventas FEFO pueden consumir. `lote` y
+   * `fechaVencimiento` exigen identidad unica en el nucleo de lotes.
    */
   private async acreditarLotes(
     preparados: CompraPreparadoItem[],
@@ -851,11 +843,7 @@ export class ComprasService {
     const creditos = new Map<string, CreditPurchaseInput>();
 
     for (const preparado of preparados) {
-      if (
-        !preparado.producto.esMedicamento ||
-        !preparado.lote ||
-        !preparado.fechaVencimientoColumna
-      ) {
+      if (!preparado.lote || !preparado.fechaVencimientoColumna) {
         continue;
       }
 
@@ -932,13 +920,6 @@ export class ComprasService {
     dto: QuickCreateProductoCompraDto,
     queryRunner: ReturnType<DataSource['createQueryRunner']>,
   ): Promise<Producto> {
-    if (typeof dto.esMedicamento !== 'boolean') {
-      throw new BadRequestException(
-        'esMedicamento es requerido y debe ser boolean (true|false) al crear ' +
-          'un producto rapido: la clasificacion no puede omitirse',
-      );
-    }
-
     const [categoria, marca] = await Promise.all([
       queryRunner.manager.findOne(Categoria, {
         where: { id: dto.categoriaId, activo: true },
@@ -975,7 +956,6 @@ export class ComprasService {
         stockMinimo: 0,
         stockMaximo: 0,
         esControlado: false,
-        esMedicamento: dto.esMedicamento,
         descripcion: undefined,
         activo: true,
       }),

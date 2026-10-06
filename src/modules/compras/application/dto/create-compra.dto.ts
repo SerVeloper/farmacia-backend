@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
-  IsBoolean,
   IsDateString,
   IsEnum,
   IsNumber,
@@ -39,15 +38,6 @@ export class QuickCreateProductoCompraDto {
   @ApiProperty({ example: 'd7e30dfa-cc70-4f2c-8aa6-8f2b9576f620' })
   @IsUUID()
   categoriaId: string;
-
-  @ApiProperty({
-    example: true,
-    description:
-      'Clasificacion explicita de medicamento (decision humana obligatoria). ' +
-      'No se admite ausencia ni false implicito en el quick-create',
-  })
-  @IsBoolean()
-  esMedicamento: boolean;
 }
 
 export class CreateCompraItemDto {

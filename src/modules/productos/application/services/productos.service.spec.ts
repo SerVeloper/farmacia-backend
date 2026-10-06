@@ -3,10 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductosService } from './productos.service';
 import { Producto } from '../../domain/entities/producto.entity';
-import {
-  CreateProductoDto,
-  UpdateProductoDto,
-} from '../dto/create-producto.dto';
+import { CreateProductoDto } from '../dto/create-producto.dto';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('ProductosService', () => {
@@ -27,7 +24,6 @@ describe('ProductosService', () => {
     stockMinimo: 10,
     stockMaximo: 100,
     esControlado: false,
-    esMedicamento: false,
     descripcion: 'Analgésico',
     activo: true,
     fechaCreacion: new Date(),
@@ -70,7 +66,6 @@ describe('ProductosService', () => {
         stockMinimo: 10,
         stockMaximo: 100,
         esControlado: false,
-        esMedicamento: false,
       };
 
       const productoCreado = {
@@ -94,7 +89,6 @@ describe('ProductosService', () => {
         nombre: 'Aspirina 500mg',
         precioCompra: 10,
         margen: 30,
-        esMedicamento: true,
       };
 
       const expectedPrecioVenta = 13; // 10 + 30%
@@ -116,7 +110,6 @@ describe('ProductosService', () => {
     it('should use default values when not provided', async () => {
       const createDto = {
         nombre: 'Vitamina C',
-        esMedicamento: false,
       };
 
       const productoConDefaults = {
@@ -145,7 +138,6 @@ describe('ProductosService', () => {
     it('should throw BadRequestException when nombre is empty', async () => {
       const createDto = {
         nombre: '',
-        esMedicamento: false,
       };
 
       await expect(service.create(createDto)).rejects.toThrow(
@@ -222,95 +214,55 @@ describe('ProductosService', () => {
     });
   });
 
-  describe('esMedicamento (R1: clasificacion explicita requerida)', () => {
-    it('debe rechazar el alta si esMedicamento viene omitido (no default silencioso)', async () => {
+  describe('esMedicamento eliminado (alta y update no lo exigen)', () => {
+    it('debe crear el producto cuando el DTO no trae esMedicamento', async () => {
       const dto = { nombre: 'Guantes de nitrilo M' } as CreateProductoDto;
 
-      await expect(service.create(dto)).rejects.toThrow(BadRequestException);
-      await expect(service.create(dto)).rejects.toThrow(/esMedicamento/i);
+      repository.create.mockImplementation((data: any) => ({
+        ...mockProducto,
+        ...data,
+      }));
+      repository.save.mockImplementation((p: any) => Promise.resolve(p));
 
-      expect(repository.create).not.toHaveBeenCalled();
-      expect(repository.save).not.toHaveBeenCalled();
+      const result = await service.create(dto);
+
+      expect(result.nombre).toBe('Guantes de nitrilo M');
+      expect(repository.create).toHaveBeenCalledTimes(1);
+      expect(repository.save).toHaveBeenCalledTimes(1);
     });
 
-    it('debe rechazar el alta si esMedicamento no es boolean', async () => {
+    it('no debe persistir esMedicamento aunque el payload lo traiga', async () => {
       const dto = {
         nombre: 'Guantes de nitrilo M',
-        esMedicamento: 'true',
+        esMedicamento: true,
       } as unknown as CreateProductoDto;
 
-      await expect(service.create(dto)).rejects.toThrow(BadRequestException);
-      expect(repository.save).not.toHaveBeenCalled();
-    });
-
-    it('debe persistir esMedicamento=false cuando el DTO lo declara explicitamente', async () => {
-      const dto: CreateProductoDto = {
-        nombre: 'Guantes de nitrilo M',
-        esMedicamento: false,
-      };
-
       repository.create.mockImplementation((data: any) => ({
         ...mockProducto,
         ...data,
       }));
       repository.save.mockImplementation((p: any) => Promise.resolve(p));
 
-      const result = await service.create(dto);
+      await service.create(dto);
 
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ esMedicamento: false }),
-      );
-      expect(result).toEqual(expect.objectContaining({ esMedicamento: false }));
+      const datos = repository.create.mock.calls[0][0] as Record<
+        string,
+        unknown
+      >;
+      expect(Object.keys(datos)).not.toContain('esMedicamento');
     });
 
-    it('debe persistir esMedicamento=true cuando el DTO lo declara', async () => {
-      const dto: CreateProductoDto = {
-        nombre: 'Amoxicilina 500mg',
-        precioCompra: 10,
-        esMedicamento: true,
-      };
-
-      repository.create.mockImplementation((data: any) => ({
-        ...mockProducto,
-        ...data,
-      }));
+    it('debe actualizar el producto sin esMedicamento', async () => {
+      repository.findOne.mockResolvedValue(mockProducto);
       repository.save.mockImplementation((p: any) => Promise.resolve(p));
 
-      const result = await service.create(dto);
-
-      expect(result).toEqual(expect.objectContaining({ esMedicamento: true }));
-    });
-
-    it('NO debe reclasificar un producto existente si el update omite esMedicamento', async () => {
-      const medicamento = {
-        ...mockProducto,
-        esMedicamento: true,
-      } as Producto;
-      repository.findOne.mockResolvedValue(medicamento);
-      repository.save.mockImplementation((p: any) => Promise.resolve(p));
-
-      await service.update(medicamento.id, {
-        nombre: 'Amoxicilina 500mg caja x10',
+      const result = await service.update(mockProducto.id, {
+        nombre: 'Paracetamol 1000mg',
       });
 
+      expect(result.nombre).toBe('Paracetamol 1000mg');
       expect(repository.save).toHaveBeenCalledWith(
-        expect.objectContaining({ esMedicamento: true }),
-      );
-    });
-
-    it('debe permitir reclasificar explicitamente via update', async () => {
-      const noMedicamento = {
-        ...mockProducto,
-        esMedicamento: false,
-      } as Producto;
-      repository.findOne.mockResolvedValue(noMedicamento);
-      repository.save.mockImplementation((p: any) => Promise.resolve(p));
-
-      const updateDto: UpdateProductoDto = { esMedicamento: true };
-      await service.update(noMedicamento.id, updateDto);
-
-      expect(repository.save).toHaveBeenCalledWith(
-        expect.objectContaining({ esMedicamento: true }),
+        expect.objectContaining({ nombre: 'Paracetamol 1000mg' }),
       );
     });
   });

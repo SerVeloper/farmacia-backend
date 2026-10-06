@@ -81,8 +81,6 @@ interface VentaCatalogoRow {
   precioventa?: string;
   stockActual?: string;
   stockactual?: string;
-  esMedicamento?: boolean;
-  esmedicamento?: boolean | string;
 }
 
 /**
@@ -757,7 +755,6 @@ export class VentasService {
         'producto.nombre AS nombre',
         'producto.precio_venta AS precioVenta',
         'inventario.stock_actual AS stockActual',
-        'COALESCE(producto.es_medicamento, false) AS esMedicamento',
       ])
       .orderBy('producto.nombre', 'ASC')
       .limit(50)
@@ -771,20 +768,9 @@ export class VentasService {
         nombre: row.nombre || '',
         precioVenta: Number(row.precioVenta ?? row.precioventa ?? 0),
         stockActual: Number(row.stockActual ?? row.stockactual ?? 0),
-        esMedicamento: this.toEsMedicamento(row),
       })),
       sucursalId,
     );
-  }
-
-  private toEsMedicamento(row: VentaCatalogoRow): boolean {
-    const value = row.esMedicamento ?? row.esmedicamento;
-
-    if (typeof value === 'boolean') {
-      return value;
-    }
-
-    return value === 'true';
   }
 
   private async findCajaAbierta(
@@ -987,16 +973,17 @@ export class VentasService {
           (subtotalItemBruto - descuentoMonto).toFixed(2),
         );
 
-        // Los medicamentos se venden por lotes (FEFO): el asignador descuenta los
+        // Todo producto se vende por lotes (FEFO): el asignador descuenta los
         // saldos por lote y devuelve el plan. El agregado lo descuenta este
         // servicio, despues de que el asignador comparo stock vs lotes.
-        const asignaciones = producto.esMedicamento
-          ? await this.lotStockService.allocateSale(params.manager, {
-              sucursalId: params.sucursalId,
-              productoId,
-              cantidad: item.cantidad,
-            })
-          : [];
+        const asignaciones = await this.lotStockService.allocateSale(
+          params.manager,
+          {
+            sucursalId: params.sucursalId,
+            productoId,
+            cantidad: item.cantidad,
+          },
+        );
 
         const inventario = inventariosPorProducto.get(productoId)!;
         inventario.stockActual = disponible - item.cantidad;
