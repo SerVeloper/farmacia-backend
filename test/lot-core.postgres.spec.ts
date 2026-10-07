@@ -47,6 +47,8 @@ import { VentaPago, VentaMetodoPago } from '../src/modules/ventas/domain/entitie
 import { InventarioSucursal } from '../src/modules/ventas/domain/entities/inventario-sucursal.entity';
 import { Producto } from '../src/modules/productos/domain/entities/producto.entity';
 import { ProductosService } from '../src/modules/productos/application/services/productos.service';
+import { Servicio } from '../src/modules/servicios/domain/entities/servicio.entity';
+import { ServiciosService } from '../src/modules/servicios/application/services/servicios.service';
 import { UsersService } from '../src/modules/users/application/services/users.service';
 import { SucursalesService } from '../src/modules/sucursales/application/services/sucursales.service';
 import { RoleCode } from '../src/modules/users/domain/entities/role.entity';
@@ -1000,12 +1002,13 @@ suite('integracion PostgreSQL aislada: nucleo de lotes por sucursal', () => {
     const usuarios = { findByIdForAuth: async (id: string) => ({ id, sucursalId: sucursalA }) } as unknown as UsersService;
     const sucursales = { findOne: async (id: string) => ({ id, codigo: id === sucursalA ? 'A' : 'B' }) } as unknown as SucursalesService;
     const productos = { findOne: (id: string) => ds.getRepository(Producto).findOneByOrFail({ id }) } as unknown as ProductosService;
+    const servicios = { findOne: (id: string) => ds.getRepository(Servicio).findOneByOrFail({ id }) } as unknown as ServiciosService;
     const correlativos = new CorrelativosService(ds);
     const alertas = new ExpiryAlertsService(new ConfigService({ LOTES_ALERTA_PROXIMO_VENCIMIENTO_DIAS: 90 }));
     return {
       ventas: new VentasService(ds, ds.getRepository(Venta), ds.getRepository(VentaItem),
         ds.getRepository(VentaItemLote), ds.getRepository(VentaPago), ds.getRepository(InventarioSucursal),
-        ds.getRepository(Caja), ds.getRepository(CajaMovimiento), productos, stock, correlativos,
+        ds.getRepository(Caja), ds.getRepository(CajaMovimiento), productos, servicios, stock, correlativos,
         usuarios, sucursales, alertas),
       cajas: new CajasService(ds.getRepository(Caja), ds.getRepository(CajaMovimiento), ds,
         correlativos, sucursales, usuarios),

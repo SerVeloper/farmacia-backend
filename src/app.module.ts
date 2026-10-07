@@ -14,6 +14,7 @@ import { CajasModule } from './modules/cajas/cajas.module';
 import { VentasModule } from './modules/ventas/ventas.module';
 import { ComprasModule } from './modules/compras/compras.module';
 import { UnidadesMedidaModule } from './modules/unidades-medida/unidades-medida.module';
+import { ServiciosModule } from './modules/servicios/servicios.module';
 import { CorrelativosModule } from './common/correlativos/correlativos.module';
 
 @Module({
@@ -84,6 +85,7 @@ import { CorrelativosModule } from './common/correlativos/correlativos.module';
     VentasModule,
     ComprasModule,
     UnidadesMedidaModule,
+    ServiciosModule,
     CorrelativosModule,
   ],
 })

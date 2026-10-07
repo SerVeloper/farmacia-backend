@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CajasModule } from '../cajas/cajas.module';
 import { LotesModule } from '../lotes/lotes.module';
 import { ProductosModule } from '../productos/productos.module';
+import { ServiciosModule } from '../servicios/servicios.module';
 import { SucursalesModule } from '../sucursales/sucursales.module';
 import { UsersModule } from '../users/users.module';
 import { VentasService } from './application/services/ventas.service';
@@ -30,6 +31,7 @@ import { CajaMovimiento } from '../cajas/domain/entities/caja-movimiento.entity'
     UsersModule,
     SucursalesModule,
     ProductosModule,
+    ServiciosModule,
     CajasModule,
     LotesModule,
   ],

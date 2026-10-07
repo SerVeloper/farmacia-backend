@@ -35,6 +35,8 @@ import {
 } from '../../../lotes/application/services/expiry-alerts.service';
 import { Producto } from '../../../productos/domain/entities/producto.entity';
 import { ProductosService } from '../../../productos/application/services/productos.service';
+import { Servicio } from '../../../servicios/domain/entities/servicio.entity';
+import { ServiciosService } from '../../../servicios/application/services/servicios.service';
 import { SucursalesService } from '../../../sucursales/application/services/sucursales.service';
 import { UsersService } from '../../../users/application/services/users.service';
 import { mapLegacyRoleToRoleCode } from '../../../users/domain/constants/roles.constants';
@@ -134,6 +136,7 @@ export class VentasService {
     @InjectRepository(CajaMovimiento)
     private readonly cajaMovimientosRepository: Repository<CajaMovimiento>,
     private readonly productosService: ProductosService,
+    private readonly serviciosService: ServiciosService,
     private readonly lotStockService: LotStockService,
     private readonly correlativosService: CorrelativosService,
     private readonly usersService: UsersService,
@@ -619,7 +622,9 @@ export class VentasService {
         };
 
         alertasVencimiento.push({
-          productoId: item.productoId,
+          // Solo un item de PRODUCTO genera asignaciones de lote, asi que el
+          // origen nunca es null aca (fallback defensivo para el tipo).
+          productoId: item.productoId ?? '',
           nombreProducto: item.nombreProducto ?? '',
           loteId: asignacion.loteId,
           numeroLote: asignacion.numeroLote,
@@ -893,30 +898,66 @@ export class VentasService {
     const asignacionesPorItem: SaleAllocation[][] = [];
 
     const productosPorId = new Map<string, Producto>();
+    const serviciosPorId = new Map<string, Servicio>();
 
+    // Guard defensiva: el DTO exige exactamente-un-origen con
+    // `ExactamenteUnOrigen`, pero el servicio puede recibir DTOs crudos y un
+    // item sin origen romperia las rutas de producto/servicio. Se valida aqui
+    // tambien para mantener la invariante dentro de la transaccion.
     for (const item of params.items) {
-      const producto = (await this.productosService.findOne(
-        item.productoId,
-      )) as Producto;
+      const conProducto = Boolean(item.productoId);
+      const conServicio = Boolean(item.servicioId);
 
-      if (!producto.activo) {
+      if (conProducto === conServicio) {
         throw new BadRequestException(
-          `El producto ${producto.nombre} no esta disponible para venta`,
+          'El item debe indicar exactamente un origen: productoId o servicioId (no ambos ni ninguno)',
         );
       }
-
-      productosPorId.set(item.productoId, producto);
     }
+
+    // Resolucion de productos (ruta existente) y de servicios en el mismo
+    // barrido comercial: el NotFound/BadRequest del origen sale ANTES de tomar
+    // cualquier lock de inventario.
+    for (const item of params.items) {
+      if (item.productoId) {
+        const producto = (await this.productosService.findOne(
+          item.productoId,
+        )) as Producto;
+
+        if (!producto.activo) {
+          throw new BadRequestException(
+            `El producto ${producto.nombre} no esta disponible para venta`,
+          );
+        }
+
+        productosPorId.set(item.productoId, producto);
+      } else {
+        const servicioId = item.servicioId as string;
+        const servicio = await this.serviciosService.findOne(servicioId);
+
+        if (!servicio.activo) {
+          throw new BadRequestException(
+            `El servicio ${servicio.nombre} no esta disponible para venta`,
+          );
+        }
+
+        serviciosPorId.set(servicioId, servicio);
+      }
+    }
+
+    const productoIds = params.items
+      .filter((item) => item.productoId)
+      .map((item) => item.productoId as string);
 
     // Orden de locks: primero `productos`, despues `inventario_sucursal`.
     await this.bloquearProductosOrdenados({
-      productoIds: params.items.map((item) => item.productoId),
+      productoIds,
       manager: params.manager,
     });
 
     const inventariosPorProducto = await this.bloquearInventariosOrdenados({
       sucursalId: params.sucursalId,
-      productoIds: params.items.map((item) => item.productoId),
+      productoIds,
       manager: params.manager,
     });
 
@@ -933,12 +974,20 @@ export class VentasService {
     // lotes y el descuento del agregado Taken-lotes pidan los locks en el mismo
     // orden que las compras y la conciliacion. El resultado se vuelve a
     // guardar en el indice comercial del item para no alterar el ticket.
+    // Los servicios no se agrupan: no tienen locks ni agregados que ordenar y
+    // se resuelven en su posicion comercial (indicesServicio).
     const indicesPorProducto = new Map<string, number[]>();
+    const indicesServicio: number[] = [];
 
     params.items.forEach((item, indice) => {
-      const indices = indicesPorProducto.get(item.productoId) ?? [];
-      indices.push(indice);
-      indicesPorProducto.set(item.productoId, indices);
+      if (item.servicioId) {
+        indicesServicio.push(indice);
+      } else {
+        const productoId = item.productoId as string;
+        const indices = indicesPorProducto.get(productoId) ?? [];
+        indices.push(indice);
+        indicesPorProducto.set(productoId, indices);
+      }
     });
 
     const resultadosPorIndice: VentaItemResuelto[] = [];
@@ -993,6 +1042,7 @@ export class VentasService {
         resultadosPorIndice[indice] = {
           ventaItem: {
             productoId,
+            servicioId: null,
             cantidad: item.cantidad,
             precioUnitario,
             descuentoMonto,
@@ -1005,6 +1055,48 @@ export class VentasService {
           descuentoMonto,
         };
       }
+    }
+
+    // Los servicios NO pasan por FEFO, NO bloquean inventario y NO generan
+    // venta_item_lotes: solo matematicas de precio (descuento incluido).
+    // Se persisten con servicioId + nombreProducto (display unico) y
+    // codigoProducto null.
+    for (const indice of indicesServicio) {
+      const item = params.items[indice];
+      const servicioId = item.servicioId as string;
+      const servicio = serviciosPorId.get(servicioId)!;
+
+      const precioUnitario = Number(servicio.precioVenta || 0);
+      const subtotalItemBruto = Number(
+        (precioUnitario * item.cantidad).toFixed(2),
+      );
+      const descuentoMonto = Number(item.descuentoMonto || 0);
+
+      if (descuentoMonto > subtotalItemBruto) {
+        throw new BadRequestException(
+          `El descuento del servicio ${servicio.nombre} supera su subtotal`,
+        );
+      }
+
+      const subtotalItem = Number(
+        (subtotalItemBruto - descuentoMonto).toFixed(2),
+      );
+
+      resultadosPorIndice[indice] = {
+        ventaItem: {
+          productoId: null,
+          servicioId: servicio.id,
+          cantidad: item.cantidad,
+          precioUnitario,
+          descuentoMonto,
+          subtotal: subtotalItem,
+          nombreProducto: servicio.nombre,
+          codigoProducto: null,
+        },
+        asignaciones: [],
+        subtotalItemBruto,
+        descuentoMonto,
+      };
     }
 
     for (const resultado of resultadosPorIndice) {

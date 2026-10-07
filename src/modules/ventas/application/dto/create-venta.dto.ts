@@ -14,11 +14,27 @@ import {
 import { Type } from 'class-transformer';
 
 import { VentaMetodoPago } from '../../domain/entities/venta-pago.entity';
+import { ExactamenteUnOrigen } from '../validators/exactamente-un-origen.validator';
 
+@ExactamenteUnOrigen()
 export class CreateVentaItemDto {
-  @ApiProperty({ example: 'b9ca8f60-df6d-4a6e-ab90-7a647dbf8e31' })
+  @ApiPropertyOptional({
+    example: 'b9ca8f60-df6d-4a6e-ab90-7a647dbf8e31',
+    description:
+      'Producto (con lote/stock). Obligatorio si el item NO es un servicio.',
+  })
+  @IsOptional()
   @IsUUID()
-  productoId: string;
+  productoId?: string;
+
+  @ApiPropertyOptional({
+    example: 'c4000000-0000-4000-8000-00000000000a',
+    description:
+      'Servicio (sin inventario). Obligatorio si el item NO es un producto.',
+  })
+  @IsOptional()
+  @IsUUID()
+  servicioId?: string;
 
   @ApiProperty({ example: 2 })
   @IsNumber()

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 
@@ -25,6 +26,7 @@ import {
 } from '../../../lotes/application/services/expiry-alerts.service';
 import { ProductosService } from '../../../productos/application/services/productos.service';
 import { Producto } from '../../../productos/domain/entities/producto.entity';
+import { ServiciosService } from '../../../servicios/application/services/servicios.service';
 import { SucursalesService } from '../../../sucursales/application/services/sucursales.service';
 import { UsersService } from '../../../users/application/services/users.service';
 import { InventarioSucursal } from '../../domain/entities/inventario-sucursal.entity';
@@ -143,6 +145,7 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
   };
   let productosPorId: Map<string, Record<string, unknown>>;
   let inventariosPorProducto: Map<string, InventarioSucursal>;
+  let serviciosPorId: Map<string, Record<string, unknown>>;
   let ventaItemsGuardados: Array<Record<string, unknown>>;
   let ventaItemLotesGuardados: Array<Record<string, unknown>>;
   let inventarioGuardado: Array<Record<string, unknown>>;
@@ -162,6 +165,7 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
     inventarioGuardado = [];
     secuencia = [];
     ventaItemsLectura = [];
+    serviciosPorId = new Map();
     ventaLectura = {
       id: VENTA_ID,
       sucursalId: SUCURSAL_ID,
@@ -403,6 +407,17 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
       {
         findOne: jest.fn(async (id: string) => productosPorId.get(id)),
       } as unknown as ProductosService,
+      {
+        findOne: jest.fn(async (id: string) => {
+          const servicio = serviciosPorId.get(id);
+
+          if (!servicio) {
+            throw new NotFoundException(`Servicio con ID ${id} no encontrado`);
+          }
+
+          return servicio;
+        }),
+      } as unknown as ServiciosService,
       lotStockService as unknown as LotStockService,
       correlativosService as unknown as CorrelativosService,
       {
@@ -424,7 +439,8 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
 
   function dtoBase(
     items: Array<{
-      productoId: string;
+      productoId?: string;
+      servicioId?: string;
       cantidad: number;
       descuentoMonto?: number;
     }>,
@@ -1925,6 +1941,161 @@ describe('VentasService — nucleo de lotes FEFO en la venta', () => {
       );
 
       expect(expiryAlertsService.getForProducts).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('venta de servicios (items con servicioId)', () => {
+    const SERVICIO_UUID = 'c4000000-0000-4000-8000-00000000000a';
+    const SERVICIO_INEXISTENTE = 'c4000000-0000-4000-8000-00000000dead';
+
+    beforeEach(() => {
+      serviciosPorId.set(SERVICIO_UUID, {
+        id: SERVICIO_UUID,
+        nombre: 'Aplicación de Inyectable',
+        precioVenta: 1500,
+        activo: true,
+      });
+    });
+
+    it('vende un item SOLO de servicio sin tocar stock, inventario ni lotes', async () => {
+      const dto = dtoBase(
+        [{ servicioId: SERVICIO_UUID, cantidad: 1 }],
+        [{ metodoPago: VentaMetodoPago.EFECTIVO, monto: 1500 }],
+      );
+
+      await service.create(dto, USUARIO);
+
+      // No decrementa stock ni asigna lotes: el servicio no pasa por FEFO.
+      expect(lotStockService.allocateSale).not.toHaveBeenCalled();
+      expect(ventaItemLotesGuardados).toHaveLength(0);
+      expect(inventarioGuardado).toHaveLength(0);
+
+      const guardado = ventaItemsGuardados.find(
+        (item) => item.servicioId === SERVICIO_UUID,
+      );
+
+      expect(guardado).toMatchObject({
+        productoId: null,
+        servicioId: SERVICIO_UUID,
+        cantidad: 1,
+        precioUnitario: 1500,
+        descuentoMonto: 0,
+        subtotal: 1500,
+        nombreProducto: 'Aplicación de Inyectable',
+        codigoProducto: null,
+      });
+      expect(guardarVenta().subtotal).toBe(1500);
+    });
+
+    it('combina productos y servicios en un ticket mixto', async () => {
+      lotStockService.allocateSale.mockResolvedValue([
+        { loteId: LOTE_PROXIMO, cantidad: 3 },
+      ]);
+      const dto = dtoBase(
+        [
+          { productoId: PRODUCTO_MED_A, cantidad: 3 },
+          { servicioId: SERVICIO_UUID, cantidad: 1 },
+        ],
+        [{ metodoPago: VentaMetodoPago.EFECTIVO, monto: 1530 }],
+      );
+
+      await service.create(dto, USUARIO);
+
+      // El FEFO se ejecuta SOLO para el producto.
+      expect(lotStockService.allocateSale).toHaveBeenCalledTimes(1);
+      expect(
+        ventaItemsGuardados.some(
+          (item) => item.servicioId === SERVICIO_UUID,
+        ),
+      ).toBe(true);
+      expect(
+        ventaItemsGuardados.some(
+          (item) => item.productoId === PRODUCTO_MED_A,
+        ),
+      ).toBe(true);
+      // La unica fila de venta_item_lotes corresponde al producto.
+      expect(ventaItemLotesGuardados).toHaveLength(1);
+      expect(ventaItemLotesGuardados[0].loteId).toBe(LOTE_PROXIMO);
+      expect(guardarVenta().subtotal).toBe(1530);
+    });
+
+    it('permite cantidad mayor a 1 del mismo servicio y calcula el subtotal', async () => {
+      const dto = dtoBase(
+        [{ servicioId: SERVICIO_UUID, cantidad: 2 }],
+        [{ metodoPago: VentaMetodoPago.EFECTIVO, monto: 3000 }],
+      );
+
+      await service.create(dto, USUARIO);
+
+      const guardado = ventaItemsGuardados.find(
+        (item) => item.servicioId === SERVICIO_UUID,
+      );
+
+      expect(guardado).toMatchObject({
+        servicioId: SERVICIO_UUID,
+        cantidad: 2,
+        precioUnitario: 1500,
+        subtotal: 3000,
+      });
+      expect(lotStockService.allocateSale).not.toHaveBeenCalled();
+      expect(ventaItemLotesGuardados).toHaveLength(0);
+    });
+
+    it('rechaza con NotFoundException un servicio inexistente y no toca stock', async () => {
+      const dto = dtoBase(
+        [{ servicioId: SERVICIO_INEXISTENTE, cantidad: 1 }],
+        [{ metodoPago: VentaMetodoPago.EFECTIVO, monto: 2000 }],
+      );
+
+      await expect(service.create(dto, USUARIO)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(lotStockService.allocateSale).not.toHaveBeenCalled();
+      expect(ventaItemsGuardados).toHaveLength(0);
+    });
+
+    it('rechaza con BadRequestException un servicio inactivo', async () => {
+      serviciosPorId.set(SERVICIO_UUID, {
+        id: SERVICIO_UUID,
+        nombre: 'Aplicación de Inyectable',
+        precioVenta: 1500,
+        activo: false,
+      });
+      const dto = dtoBase(
+        [{ servicioId: SERVICIO_UUID, cantidad: 1 }],
+        [{ metodoPago: VentaMetodoPago.EFECTIVO, monto: 1500 }],
+      );
+
+      await expect(service.create(dto, USUARIO)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(lotStockService.allocateSale).not.toHaveBeenCalled();
+    });
+
+    it('expone en el detalle servicioId y nombreProducto del servicio con codigoProducto null', async () => {
+      ventaItemsLectura = [
+        {
+          id: ITEM_A_ID,
+          ventaId: VENTA_ID,
+          productoId: null,
+          servicioId: SERVICIO_UUID,
+          cantidad: 1,
+          precioUnitario: 1500,
+          descuentoMonto: 0,
+          subtotal: 1500,
+          nombreProducto: 'Aplicación de Inyectable',
+          codigoProducto: null,
+        } as unknown as VentaItem,
+      ];
+
+      const detalle = await service.findOne(VENTA_ID, USUARIO);
+      const item = detalle.items[0];
+
+      expect(item.servicioId).toBe(SERVICIO_UUID);
+      expect(item.nombreProducto).toBe('Aplicación de Inyectable');
+      expect(item.codigoProducto).toBeNull();
+      // Un servicio no tiene asignaciones de lote.
+      expect(item.asignaciones).toEqual([]);
     });
   });
 });
